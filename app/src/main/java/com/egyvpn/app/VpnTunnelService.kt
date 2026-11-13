@@ -14,7 +14,7 @@ class VpnTunnelService : VpnService() {
         flags: Int,
         startId: Int
     ): Int {
-        // VPN engine will be integrated in a later stage.
+        // سيتم إضافة محرك الاتصال الحقيقي في المرحلة التالية.
         return START_NOT_STICKY
     }
 
