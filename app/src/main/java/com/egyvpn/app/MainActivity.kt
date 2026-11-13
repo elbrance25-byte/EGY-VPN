@@ -1,6 +1,7 @@
 
 package com.egyvpn.app
 
+import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -31,10 +32,15 @@ class MainActivity : ComponentActivity() {
                 rememberLauncherForActivityResult(
                     ActivityResultContracts.StartActivityForResult()
                 ) { result ->
-                    status = if (result.resultCode == RESULT_OK) {
-                        "تم منح إذن VPN"
+                    if (result.resultCode == RESULT_OK) {
+                        val serviceIntent = Intent(
+                            this@MainActivity,
+                            VpnTunnelService::class.java
+                        )
+                        startService(serviceIntent)
+                        status = "تم منح الإذن وبدأت الخدمة المبدئية"
                     } else {
-                        "لم يتم منح الإذن"
+                        status = "لم يتم منح الإذن"
                     }
                 }
 
@@ -81,7 +87,12 @@ class MainActivity : ComponentActivity() {
                                 )
 
                                 if (intent == null) {
-                                    status = "تم منح إذن VPN مسبقًا"
+                                    val serviceIntent = Intent(
+                                        this@MainActivity,
+                                        VpnTunnelService::class.java
+                                    )
+                                    startService(serviceIntent)
+                                    status = "بدأت الخدمة المبدئية"
                                 } else {
                                     vpnPermissionLauncher.launch(intent)
                                 }
@@ -89,7 +100,7 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp)
                         ) {
-                            Text("طلب إذن VPN")
+                            Text("تشغيل VPN")
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))
