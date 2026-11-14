@@ -67,6 +67,22 @@ jobs:
           gomobile bind -v -target android/arm64,android/arm -androidapi 26 -javapkg com.egyvpn.masterdns.gomobile -o "$GITHUB_WORKSPACE/app/libs/masterdnsvpn-upstream.aar" ./cmd/android
           test -s "$GITHUB_WORKSPACE/app/libs/masterdnsvpn-upstream.aar"
 
+      - name: Verify shared Go JNI runtime
+        run: |
+          python3 - <<'PY'
+          import hashlib, zipfile
+          files = {"DNSTT": "app/libs/dnstt-upstream.aar", "MasterDnsVPN": "app/libs/masterdnsvpn-upstream.aar"}
+          for abi in ("arm64-v8a", "armeabi-v7a"):
+              entry = f"jni/{abi}/libgojni.so"
+              hashes = {}
+              for name, path in files.items():
+                  with zipfile.ZipFile(path) as archive:
+                      hashes[name] = hashlib.sha256(archive.read(entry)).hexdigest()
+              print(abi, hashes)
+              if len(set(hashes.values())) != 1:
+                  raise SystemExit(f"Go JNI runtime mismatch for {abi}; refusing unsafe APK packaging")
+          PY
+
       - name: Validate Android Manifest
         run: |
           python3 - <<'PY'
