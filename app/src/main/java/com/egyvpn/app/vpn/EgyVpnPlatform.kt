@@ -122,8 +122,9 @@ internal class EgyVpnPlatform(private val service: VpnService) : PlatformInterfa
                         name = network.name
                         index = network.index
                         mtu = network.mtu
-                        addresses = StringValues(network.interfaceAddresses.map { address ->
-                            val host = if (address.address is Inet6Address) address.address.hostAddress.substringBefore('%') else address.address.hostAddress
+                        addresses = StringValues(network.interfaceAddresses.mapNotNull { address ->
+                            val rawHost = address.address.hostAddress ?: return@mapNotNull null
+                            val host = if (address.address is Inet6Address) rawHost.substringBefore('%') else rawHost
                             "$host/${address.networkPrefixLength}"
                         })
                         flags = interfaceFlags
