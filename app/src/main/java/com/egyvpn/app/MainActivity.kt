@@ -533,12 +533,12 @@ private fun EgyVpnHome() {
                     minLines = 5,
                     maxLines = 9,
                     label = { Text("الصق رابط أو ملف الإعداد") },
-                    placeholder = { Text(when (selectedEngine) { EngineId.DNSTT.name -> "DNSTT / Slipstream JSON"; EngineId.MASTER_DNS.name -> "MasterDnsVPN JSON"; else -> "sing-box JSON" }) },
+                    placeholder = { Text(when (selectedEngine) { EngineId.DNSTT.name -> "ملف LitronSSH TXT أو DNSTT JSON"; EngineId.MASTER_DNS.name -> "MasterDnsVPN JSON"; else -> "sing-box JSON" }) },
                     shape = RoundedCornerShape(14.dp)
                 )
                 Text(
                     when (selectedEngine) {
-                        EngineId.DNSTT.name -> "DNSTT يحتاج dns_server و tunnel_domain و public_key. مع Slipstream استخدم transport=slipstream ولا تحتاج public_key. دعم Slipstream داخل نسخة ARM64 فقط."
+                        EngineId.DNSTT.name -> "يمكن استيراد ملف TXT الناتج من LitronSSH (Copy all details)؛ يحوّله التطبيق إلى إعداد DNSTT. أو أدخل JSON: dns_server و tunnel_domain و public_key."
                         EngineId.MASTER_DNS.name -> "MasterDnsVPN يحتاج سيرفرًا مهيأً، مع domains و encryption_key و resolvers (عنوان IP لكل سطر)."
                         else -> "sing-box يقبل ملف إعداد JSON كاملًا يتضمن outbounds صالحًا."
                     },
