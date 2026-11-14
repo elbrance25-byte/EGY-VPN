@@ -25,13 +25,14 @@ android {
     }
 
 
-    // libbox bundles large native libraries; publish separate installable APKs
-    // for the two Android ABIs commonly used by phones, not a 300+ MB universal APK.
+    // Slipstream's pinned upstream Android binary is currently available only for arm64-v8a.
+    // Ship one consistent APK so every advertised engine has its native runtime.
+    // 32-bit ABI support can be restored after building and verifying a matching Slipstream binary.
     splits {
         abi {
             isEnable = true
             reset()
-            include("arm64-v8a", "armeabi-v7a")
+            include("arm64-v8a")
             isUniversalApk = false
         }
     }
