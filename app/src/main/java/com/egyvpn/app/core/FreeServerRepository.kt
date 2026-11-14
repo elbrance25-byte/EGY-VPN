@@ -1,6 +1,5 @@
 package com.egyvpn.app.core
 
-import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -77,11 +76,15 @@ object FreeServerRepository {
         }.getOrDefault(false)
 
     private fun toSingBox(link: String): Candidate {
-        val uri = Uri.parse(link)
+        val uri = java.net.URI(link)
         val scheme = uri.scheme?.lowercase() ?: error("بروتوكول غير مدعوم")
         val host = uri.host ?: error("عنوان الخادم غير صالح")
         val port = uri.port.takeIf { it in 1..65535 } ?: error("منفذ الخادم غير صالح")
-        val query = uri.queryParameterNames.associateWith { uri.getQueryParameter(it).orEmpty() }
+        val userInfo = uri.rawUserInfo?.let { URLDecoder.decode(it, "UTF-8") }
+        val query = uri.rawQuery.orEmpty().split("&").filter { it.isNotBlank() }.associate { part ->
+            val pieces = part.split("=", limit = 2)
+            URLDecoder.decode(pieces[0], "UTF-8") to URLDecoder.decode(pieces.getOrElse(1) { "" }, "UTF-8")
+        }
         val tag = "EGY-${scheme.uppercase()}-${host}"
         val outbound = JSONObject()
             .put("type", scheme)
@@ -91,13 +94,13 @@ object FreeServerRepository {
 
         when (scheme) {
             "vless" -> {
-                val uuid = uri.userInfo?.substringBefore(':')?.takeIf { it.isNotBlank() }
+                val uuid = userInfo?.substringBefore(':')?.takeIf { it.isNotBlank() }
                     ?: error("UUID مفقود")
                 outbound.put("uuid", uuid)
                 query["flow"]?.takeIf { it.isNotBlank() }?.let { outbound.put("flow", it) }
             }
             "trojan" -> {
-                val password = uri.userInfo?.let { URLDecoder.decode(it, "UTF-8") }
+                val password = userInfo
                     ?.takeIf { it.isNotBlank() } ?: error("كلمة مرور Trojan مفقودة")
                 outbound.put("password", password)
             }
