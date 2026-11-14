@@ -24,6 +24,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import mobile.Mobile
+import com.jcraft.jsch.JSch
+import com.jcraft.jsch.Session
 
 class DnsttVpnService : VpnService() {
 
@@ -55,6 +57,8 @@ class DnsttVpnService : VpnService() {
         const val EXTRA_TUNNEL_DOMAIN = "tunnel_domain"
         const val EXTRA_PUBLIC_KEY = "public_key"
         const val EXTRA_SSH_MODE = "ssh_mode"
+        const val EXTRA_SSH_USERNAME = "ssh_username"
+        const val EXTRA_SSH_PASSWORD = "ssh_password"
         const val EXTRA_SOCKS_USERNAME = "socks_username"
         const val EXTRA_SOCKS_PASSWORD = "socks_password"
         const val EXTRA_TRANSPORT_TYPE = "transport_type"
@@ -69,6 +73,10 @@ class DnsttVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var proxyHost: String = "127.0.0.1"
     private var proxyPort: Int = 7000
+    private var dnsttListenPort: Int = 7000
+    private var sshUsername: String = ""
+    private var sshPassword: String = ""
+    private var sshSession: Session? = null
     private var dnsServer: String = "8.8.8.8"
     private var tunnelDomain: String = ""
     private var publicKey: String = ""
@@ -109,10 +117,14 @@ class DnsttVpnService : VpnService() {
             ACTION_CONNECT -> {
                 proxyHost = intent.getStringExtra(EXTRA_PROXY_HOST) ?: "127.0.0.1"
                 proxyPort = intent.getIntExtra(EXTRA_PROXY_PORT, 7000)
+                dnsttListenPort = proxyPort
                 dnsServer = intent.getStringExtra(EXTRA_DNS_SERVER) ?: "8.8.8.8"
                 tunnelDomain = intent.getStringExtra(EXTRA_TUNNEL_DOMAIN) ?: ""
                 publicKey = intent.getStringExtra(EXTRA_PUBLIC_KEY) ?: ""
                 isSshMode = intent.getBooleanExtra(EXTRA_SSH_MODE, false)
+                sshUsername = intent.getStringExtra(EXTRA_SSH_USERNAME) ?: ""
+                sshPassword = intent.getStringExtra(EXTRA_SSH_PASSWORD) ?: ""
+                if (isSshMode) proxyPort = dnsttListenPort + 1
                 socksUsername = intent.getStringExtra(EXTRA_SOCKS_USERNAME)
                 socksPassword = intent.getStringExtra(EXTRA_SOCKS_PASSWORD)
                 transportType = intent.getStringExtra(EXTRA_TRANSPORT_TYPE) ?: "dnstt"
@@ -144,21 +156,21 @@ class DnsttVpnService : VpnService() {
             stopDnsttClient()
 
             // Wait for port to be available
-            if (isPortInUse(proxyPort)) {
-                Log.w(TAG, "Port $proxyPort still in use, waiting...")
-                waitForPortRelease(proxyPort)
-                if (isPortInUse(proxyPort)) {
-                    Log.e(TAG, "Port $proxyPort still in use after waiting")
+            if (isPortInUse(dnsttListenPort)) {
+                Log.w(TAG, "DNSTT listen port $dnsttListenPort still in use, waiting...")
+                waitForPortRelease(dnsttListenPort)
+                if (isPortInUse(dnsttListenPort)) {
+                    Log.e(TAG, "DNSTT listen port $dnsttListenPort still in use after waiting")
                     return false
                 }
             }
 
             Log.d(TAG, "Starting Go-based DNSTT client")
             Log.d(TAG, "DNS Server: $dnsServer, Domain: $tunnelDomain")
-            Log.d(TAG, "Listen address: $proxyHost:$proxyPort")
+            Log.d(TAG, "DNSTT raw TCP stream: $proxyHost:$dnsttListenPort")
 
-            // Create the Go dnstt client
-            val listenAddr = "$proxyHost:$proxyPort"
+            // DNSTT exposes a raw TCP stream to the SSH server, not SOCKS5.
+            val listenAddr = "$proxyHost:$dnsttListenPort"
             dnsttClient = Mobile.newClient(dnsServer, tunnelDomain, publicKey, listenAddr)
 
             // Start the client (this may block while establishing connection)
@@ -174,16 +186,8 @@ class DnsttVpnService : VpnService() {
             Log.d(TAG, "DNSTT client running: $running")
 
             if (running) {
-                // Try to verify SOCKS5 proxy is actually listening
-                if (verifySocks5Listening()) {
-                    Log.d(TAG, "SOCKS5 proxy verified listening on $proxyHost:$proxyPort")
-                    return true
-                } else {
-                    Log.w(TAG, "SOCKS5 proxy not responding, but client reports running")
-                    return true // Still return true, let connections try
-                }
+                Log.d(TAG, "DNSTT raw TCP stream listener is running on $proxyHost:$dnsttListenPort")
             }
-
             return running
 
         } catch (e: Exception) {
@@ -303,6 +307,47 @@ class DnsttVpnService : VpnService() {
         } catch (e: Exception) {
             Log.w(TAG, "Tunnel verification error: ${e.message}")
             false
+        }
+    }
+
+    /**
+     * Opens SSH through DNSTT's raw TCP stream and creates a local dynamic SOCKS5 proxy.
+     */
+    private fun startSshBridge(): Boolean {
+        if (sshUsername.isBlank() || sshPassword.isBlank()) {
+            Log.e(TAG, "LitronSSH credentials are missing")
+            return false
+        }
+        return try {
+            stopSshBridge()
+            val session = JSch().getSession(sshUsername, proxyHost, dnsttListenPort)
+            session.setPassword(sshPassword)
+            // LitronSSH export does not currently provide an SSH host-key fingerprint to pin.
+            session.setConfig("StrictHostKeyChecking", "no")
+            session.setConfig("PreferredAuthentications", "password,keyboard-interactive")
+            session.serverAliveInterval = 15000
+            session.connect(30000)
+            session.setPortForwardingD("127.0.0.1", proxyPort)
+            sshSession = session
+            Log.d(TAG, "SSH-over-DNSTT connected; local SOCKS5 proxy is ready")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "SSH-over-DNSTT setup failed", e)
+            stopSshBridge()
+            false
+        }
+    }
+
+    private fun stopSshBridge() {
+        try {
+            sshSession?.let { session ->
+                runCatching { session.delPortForwardingD("127.0.0.1", proxyPort) }
+                session.disconnect()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error stopping SSH bridge: " + e.javaClass.simpleName)
+        } finally {
+            sshSession = null
         }
     }
 
@@ -463,47 +508,46 @@ class DnsttVpnService : VpnService() {
             Thread.sleep(500)
             Log.d(TAG, "VPN routing settled")
 
-            // In SSH mode, the SOCKS5 proxy is already running (started by MainActivity)
-            // In normal mode, start the appropriate tunnel client
-            if (!isSshMode) {
-                if (transportType == "slipstream") {
-                    Log.d(TAG, "Starting slipstream client")
-                    if (!startSlipstreamClient()) {
-                        Log.e(TAG, "Failed to start slipstream tunnel")
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            stateCallback?.invoke("error")
-                        }
-                        vpnInterface?.close()
-                        vpnInterface = null
-                        releaseWakeLock()
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                        stopSelf()
-                        return
-                    }
-                    Log.d(TAG, "slipstream tunnel started successfully")
-                } else {
-                    Log.d(TAG, "Starting dnstt client")
-                    if (!startDnsttClient()) {
-                        Log.e(TAG, "Failed to start dnstt-client tunnel")
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            stateCallback?.invoke("error")
-                        }
-                        vpnInterface?.close()
-                        vpnInterface = null
-                        releaseWakeLock()
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                        stopSelf()
-                        return
-                    }
-                    Log.d(TAG, "dnstt-client tunnel started successfully")
+            if (transportType == "slipstream") {
+                Log.d(TAG, "Starting Slipstream client")
+                if (!startSlipstreamClient()) {
+                    Log.e(TAG, "Failed to start Slipstream tunnel")
+                    stateCallback?.invoke("error")
+                    disconnect()
+                    return
                 }
             } else {
-                Log.d(TAG, "SSH mode - using existing SOCKS5 proxy on port $proxyPort")
+                Log.d(TAG, "Starting DNSTT raw TCP client")
+                if (!startDnsttClient()) {
+                    Log.e(TAG, "Failed to start DNSTT client")
+                    stateCallback?.invoke("error")
+                    disconnect()
+                    return
+                }
+                if (isSshMode && !startSshBridge()) {
+                    Log.e(TAG, "Failed to establish SSH over DNSTT")
+                    stateCallback?.invoke("error")
+                    disconnect()
+                    return
+                }
             }
 
-            // Verify tunnel actually works by making HTTP request through SOCKS5 proxy
-            // Skip verification in SSH mode (proxy managed externally)
-            if (!isSshMode) {
+            // Verify the full path with a real HTTP request through SOCKS5.
+            Log.d(TAG, "Verifying tunnel connectivity...")
+            val verifyTimeout = if (transportType == "slipstream") 15000 else 30000
+            if (!verifyTunnelConnection(verifyTimeout)) {
+                Log.e(TAG, "Tunnel verification failed - connection not working")
+                stateCallback?.invoke("error")
+                stopSshBridge()
+                if (transportType == "slipstream") stopSlipstreamClient() else stopDnsttClient()
+                vpnInterface?.close()
+                vpnInterface = null
+                releaseWakeLock()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return
+            }
+            Log.d(TAG, "Tunnel verification passed")
                 Log.d(TAG, "Verifying tunnel connectivity...")
                 // Use longer timeout for DNS tunnels (they're inherently slow)
                 val verifyTimeout = if (transportType == "slipstream") 15000 else 20000
@@ -795,13 +839,12 @@ class DnsttVpnService : VpnService() {
         }
         vpnInterface = null
 
-        // Stop tunnel client (only if not in SSH mode, since SSH mode manages its own)
-        if (!isSshMode) {
-            if (transportType == "slipstream") {
-                stopSlipstreamClient()
-            } else {
-                stopDnsttClient()
-            }
+        // Stop SSH forwarding before its underlying DNSTT TCP stream.
+        stopSshBridge()
+        if (transportType == "slipstream") {
+            stopSlipstreamClient()
+        } else {
+            stopDnsttClient()
         }
 
         // Release wake lock
