@@ -35,6 +35,7 @@ class DnsttVpnService : VpnService() {
                 Intent(com.egyvpn.app.vpn.EgyVpnService.ACTION_STATE)
                     .setPackage(packageName)
                     .putExtra("connected", state == "connected")
+                    .putExtra("engine", "DNSTT")
                     .putExtra("state", state)
             )
         }
