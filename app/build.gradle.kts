@@ -54,8 +54,10 @@ android {
 val downloadDnsttAssets by tasks.registering {
     val upstreamDnsttAar = file("libs/dnstt-upstream.aar")
     val dnsttAar = file("libs/dnstt.aar")
+    val upstreamMasterAar = file("libs/masterdnsvpn-upstream.aar")
+    val masterAar = file("libs/masterdnsvpn.aar")
     val slipstreamSo = file("src/main/jniLibs/arm64-v8a/libslipstream_client.so")
-    outputs.files(upstreamDnsttAar, dnsttAar, slipstreamSo)
+    outputs.files(upstreamDnsttAar, dnsttAar, upstreamMasterAar, masterAar, slipstreamSo)
     doLast {
         dnsttAar.parentFile.mkdirs()
         slipstreamSo.parentFile.mkdirs()
@@ -106,6 +108,43 @@ val downloadDnsttAssets by tasks.registering {
         check(upstreamDnsttAar.length() == 7274524L) { "DNSTT AAR size mismatch; pinned upstream asset may have changed" }
         check(dnsttAar.length() > 1024L) { "Filtered DNSTT AAR is missing or incomplete" }
         check(slipstreamSo.length() == 5923312L) { "Slipstream arm64 binary size mismatch; pinned upstream asset may have changed" }
+        // MasterDnsVPN gomobile AAR is built from its pinned Go source in CI.
+        check(upstreamMasterAar.exists() && upstreamMasterAar.length() > 1024L) {
+            "MasterDnsVPN AAR missing; run the Go/gomobile build step before Gradle"
+        }
+        if (!masterAar.exists() || masterAar.lastModified() < upstreamMasterAar.lastModified()) {
+            val filteredMasterClasses = file("$buildDir/masterdns-aar-filter/classes.jar")
+            filteredMasterClasses.parentFile.mkdirs()
+            ZipFile(upstreamMasterAar).use { aar ->
+                val classesEntry = aar.getEntry("classes.jar") ?: error("MasterDnsVPN AAR has no classes.jar")
+                ZipInputStream(aar.getInputStream(classesEntry)).use { zin ->
+                    ZipOutputStream(FileOutputStream(filteredMasterClasses)).use { zout ->
+                        while (true) {
+                            val entry = zin.nextEntry ?: break
+                            if (!entry.name.startsWith("go/")) {
+                                zout.putNextEntry(ZipEntry(entry.name))
+                                zin.copyTo(zout)
+                                zout.closeEntry()
+                            }
+                        }
+                    }
+                }
+                ZipOutputStream(FileOutputStream(masterAar)).use { zout ->
+                    val entries = aar.entries()
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
+                        zout.putNextEntry(ZipEntry(entry.name))
+                        if (entry.name == "classes.jar") {
+                            filteredMasterClasses.inputStream().use { it.copyTo(zout) }
+                        } else {
+                            aar.getInputStream(entry).use { it.copyTo(zout) }
+                        }
+                        zout.closeEntry()
+                    }
+                }
+            }
+        }
+        check(masterAar.length() > 1024L) { "Filtered MasterDnsVPN AAR is missing or incomplete" }
     }
 }
 
@@ -126,6 +165,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.github.singbox-android:libbox:1.14.4")
     implementation(files("libs/dnstt.aar"))
+    implementation(files("libs/masterdnsvpn.aar"))
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
