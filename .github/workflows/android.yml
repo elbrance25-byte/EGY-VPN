@@ -48,7 +48,17 @@ jobs:
           go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20260312152759-81488f6aeb60
           export PATH="$(go env GOPATH)/bin:$PATH"
           gomobile init
-          mkdir -p /tmp/masterdns-source app/libs
+          # Build DNSTT from source with the exact same Go/gomobile toolchain as MasterDnsVPN.
+          # This guarantees both AARs use a compatible shared libgojni runtime.
+          mkdir -p /tmp/dnstt-source app/libs
+          curl -fsSL "https://codeload.github.com/dnstt-xyz/dnstt_xyz_app/zip/8155cde0353433646aceacca1414913fc9a304a7" -o /tmp/dnstt-source.zip
+          unzip -q /tmp/dnstt-source.zip -d /tmp/dnstt-source
+          DNSTT_ROOT="$(find /tmp/dnstt-source -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          cd "$DNSTT_ROOT/go_src"
+          gomobile bind -v -target android/arm64,android/arm -androidapi 26 -o "$GITHUB_WORKSPACE/app/libs/dnstt-upstream.aar" ./mobile
+          test -s "$GITHUB_WORKSPACE/app/libs/dnstt-upstream.aar"
+          cd "$GITHUB_WORKSPACE"
+          mkdir -p /tmp/masterdns-source
           curl -fsSL "https://codeload.github.com/RevocGG/MasterDnsVPN-AndroidGG/zip/88fe4fef79b67ca98543d4ee58a85962857e5721" -o /tmp/masterdns-source.zip
           unzip -q /tmp/masterdns-source.zip -d /tmp/masterdns-source
           SOURCE_DIR="$(find /tmp/masterdns-source -mindepth 1 -maxdepth 1 -type d | head -n 1)"
