@@ -1,11 +1,18 @@
 package com.egyvpn.app
 
 import android.os.Bundle
+import android.app.Activity
+import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.net.VpnService
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +52,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.egyvpn.app.core.EngineId
+import com.egyvpn.app.core.SingBoxConfigValidator
+import com.egyvpn.app.core.TunnelProfile
+import com.egyvpn.app.vpn.EgyVpnService
 
 private val Navy = Color(0xFF171329)
 private val Panel = Color(0xFF24203A)
@@ -68,6 +78,44 @@ private fun EgyVpnHome() {
     }
     var profile by remember { mutableStateOf(prefs.getString("profile", "") ?: "") }
     var profileName by remember { mutableStateOf(prefs.getString("profile_name", "") ?: "") }
+    var isConnected by remember { mutableStateOf(prefs.getBoolean("connected", false)) }
+    var pendingConfig by remember { mutableStateOf<String?>(null) }
+
+    val startVpnService: (String) -> Unit = { config ->
+        ContextCompat.startForegroundService(
+            context,
+            Intent(context, EgyVpnService::class.java).apply {
+                action = EgyVpnService.ACTION_CONNECT
+                putExtra(EgyVpnService.EXTRA_CONFIG, config)
+            }
+        )
+    }
+    val vpnPermission = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val config = pendingConfig
+        if (result.resultCode == Activity.RESULT_OK && config != null) {
+            startVpnService(config)
+        } else {
+            Toast.makeText(context, "لم يتم منح إذن VPN", Toast.LENGTH_SHORT).show()
+        }
+        pendingConfig = null
+    }
+
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context?, intent: Intent?) {
+                if (intent?.action == EgyVpnService.ACTION_STATE) {
+                    isConnected = intent.getBooleanExtra("connected", false)
+                }
+            }
+        }
+        ContextCompat.registerReceiver(
+            context, receiver, IntentFilter(EgyVpnService.ACTION_STATE),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        onDispose { runCatching { context.unregisterReceiver(receiver) } }
+    }
 
     val importProfile = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -124,19 +172,39 @@ private fun EgyVpnHome() {
                             Text("VPN", color = Gold, fontSize = 25.sp, fontWeight = FontWeight.Black)
                         }
                         Spacer(Modifier.height(14.dp))
-                        Text("غير متصل", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                        Text("اختر محركًا وأضف ملف إعداد الاتصال", color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center)
+                        Text(if (isConnected) "متصل" else "غير متصل", color = if (isConnected) Gold else Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                        Text("اختر sing-box وأضف ملف إعداد JSON", color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(18.dp))
                         Button(
                             onClick = {
-                                Toast.makeText(context, "لم يتم تفعيل الاتصال بعد: يجري استكمال ربط محرك النفق الحقيقي.", Toast.LENGTH_LONG).show()
+                                if (isConnected) {
+                                    context.startService(Intent(context, EgyVpnService::class.java).setAction(EgyVpnService.ACTION_STOP))
+                                } else {
+                                    val candidate = profile.trim()
+                                    val check = SingBoxConfigValidator.validate(
+                                        TunnelProfile("default", EngineId.SING_BOX, "sing-box-json", candidate)
+                                    )
+                                    if (selectedEngine != EngineId.SING_BOX.name) {
+                                        Toast.makeText(context, "محرك sing-box هو المحرك المتاح حاليًا للاختبار", Toast.LENGTH_LONG).show()
+                                    } else if (!check.valid) {
+                                        Toast.makeText(context, check.error ?: "إعداد غير صالح", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        pendingConfig = candidate
+                                        val permissionIntent = VpnService.prepare(context)
+                                        if (permissionIntent == null) startVpnService(candidate)
+                                        else vpnPermission.launch(permissionIntent)
+                                    }
+                                }
                             },
-                            enabled = false,
+                            enabled = isConnected || (selectedEngine == EngineId.SING_BOX.name && profile.isNotBlank()),
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(disabledContainerColor = Color(0xFF51476B))
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isConnected) Color(0xFF8B3434) else Purple,
+                                disabledContainerColor = Color(0xFF51476B)
+                            )
                         ) {
-                            Text("الاتصال غير متاح حتى اكتمال المحرك", color = Color.White, fontSize = 13.sp)
+                            Text(if (isConnected) "قطع الاتصال" else "اتصال عبر sing-box", color = Color.White, fontSize = 14.sp)
                         }
                     }
                 }
@@ -200,7 +268,7 @@ private fun EgyVpnHome() {
                     minLines = 5,
                     maxLines = 9,
                     label = { Text("الصق رابط أو ملف الإعداد") },
-                    placeholder = { Text("VLESS / VMess / Trojan / JSON أو إعداد DNS المدعوم") },
+                    placeholder = { Text("الصق إعداد sing-box بصيغة JSON") },
                     shape = RoundedCornerShape(14.dp)
                 )
                 Spacer(Modifier.height(10.dp))
@@ -237,7 +305,7 @@ private fun EgyVpnHome() {
 
                 Spacer(Modifier.height(18.dp))
                 Text(
-                    "تنبيه: واجهة التطبيق وحفظ الإعدادات يعملان. الاتصال الفعلي سيظل مقفولًا حتى اكتمال ربط المحرك واختبار مرور الإنترنت؛ لن نعرض حالة اتصال وهمية.",
+                    "تنبيه: واجهة التطبيق وحفظ الإعدادات يعملان. اتصال sing-box يحتاج إعداد JSON صالحًا. لا تعتبر حالة الاتصال دليلًا نهائيًا على مرور الإنترنت قبل اختباره على الجهاز.",
                     color = Gold,
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center,
