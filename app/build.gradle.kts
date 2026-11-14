@@ -43,6 +43,35 @@ android {
     }
 }
 
+
+val downloadDnsttAssets by tasks.registering {
+    val dnsttAar = file("libs/dnstt.aar")
+    val slipstreamSo = file("src/main/jniLibs/arm64-v8a/libslipstream_client.so")
+    outputs.files(dnsttAar, slipstreamSo)
+    doLast {
+        dnsttAar.parentFile.mkdirs()
+        slipstreamSo.parentFile.mkdirs()
+        if (!dnsttAar.exists()) {
+            ant.get(
+                src = "https://raw.githubusercontent.com/dnstt-xyz/dnstt_xyz_app/8155cde0353433646aceacca1414913fc9a304a7/android/app/libs/dnstt.aar",
+                dest = dnsttAar
+            )
+        }
+        if (!slipstreamSo.exists()) {
+            ant.get(
+                src = "https://raw.githubusercontent.com/dnstt-xyz/dnstt_xyz_app/8155cde0353433646aceacca1414913fc9a304a7/android/app/src/main/jniLibs/arm64-v8a/libslipstream_client.so",
+                dest = slipstreamSo
+            )
+        }
+        check(dnsttAar.length() > 1024) { "DNSTT AAR download is missing or incomplete" }
+        check(slipstreamSo.length() > 1024) { "Slipstream arm64 binary download is missing or incomplete" }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(downloadDnsttAssets)
+}
+
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
 
@@ -55,6 +84,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.github.singbox-android:libbox:1.14.4")
+    implementation(files("libs/dnstt.aar"))
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
