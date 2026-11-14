@@ -388,8 +388,14 @@ private fun EgyVpnHome() {
                                         prefs.edit().putString("engine", selectedEngine).apply()
                                         profile = server.config
                                         profileName = "مجاني • ${server.protocol.uppercase()} • ${server.name.substringAfterLast('-')}"
-                                        serverStatus = "تم العثور على نقطة يمكن الوصول إلى منفذها. سيجري المحرك التحقق من المصادقة والنفق عند الاتصال."
-                                        Toast.makeText(context, "تم تحميل إعداد خادم مجاني", Toast.LENGTH_LONG).show()
+                                        prefs.edit().putString("profile", server.config).putString("profile_name", profileName).apply()
+                                        serverStatus = "تم العثور على نقطة متاحة مبدئيًا؛ جارٍ بدء فحص الاتصال الفعلي عبر النفق."
+                                        pendingConfig = server.config
+                                        pendingEngine = EngineId.SING_BOX.name
+                                        val permissionIntent = VpnService.prepare(context)
+                                        if (permissionIntent == null) startVpnService(server.config)
+                                        else vpnPermission.launch(permissionIntent)
+                                        Toast.makeText(context, "تم اختيار خادم مجاني وبدء الاتصال", Toast.LENGTH_LONG).show()
                                     }.onFailure { error ->
                                         serverStatus = error.message ?: "لم يتم العثور على خادم متاح حاليًا"
                                         Toast.makeText(context, serverStatus, Toast.LENGTH_LONG).show()
