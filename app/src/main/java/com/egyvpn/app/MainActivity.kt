@@ -65,6 +65,23 @@ private val Purple = Color(0xFF8B5CF6)
 private val Gold = Color(0xFFFFC857)
 private val Muted = Color(0xFFB9B4C9)
 
+/**
+ * Android permits only one active VpnService session per app/device.
+ * Stop any previous engine before starting a different backend so stale
+ * services cannot race to replace the system VPN interface.
+ */
+private fun stopOtherVpnEngines(context: android.content.Context, keep: String) {
+    if (keep != EngineId.SING_BOX.name) {
+        context.startService(Intent(context, EgyVpnService::class.java).setAction(EgyVpnService.ACTION_STOP))
+    }
+    if (keep != EngineId.DNSTT.name) {
+        context.startService(Intent(context, DnsttVpnService::class.java).setAction(DnsttVpnService.ACTION_DISCONNECT))
+    }
+    if (keep != EngineId.MASTER_DNS.name) {
+        context.startService(Intent(context, MasterDnsVpnService::class.java).setAction(MasterDnsVpnService.ACTION_STOP))
+    }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,6 +104,7 @@ private fun EgyVpnHome() {
     var connectedEngine by remember { mutableStateOf(prefs.getString("connected_engine", EngineId.SING_BOX.name) ?: EngineId.SING_BOX.name) }
 
     val startVpnService: (String) -> Unit = { config ->
+        stopOtherVpnEngines(context, EngineId.SING_BOX.name)
         ContextCompat.startForegroundService(
             context,
             Intent(context, EgyVpnService::class.java).apply {
@@ -96,6 +114,7 @@ private fun EgyVpnHome() {
         )
     }
     val startDnsttService: (String) -> Unit = { raw ->
+        stopOtherVpnEngines(context, EngineId.DNSTT.name)
         val config = JSONObject(raw)
         val transport = config.optString("transport", "dnstt").lowercase()
         ContextCompat.startForegroundService(
@@ -116,6 +135,7 @@ private fun EgyVpnHome() {
         )
     }
     val startMasterDnsService: (String) -> Unit = { raw ->
+        stopOtherVpnEngines(context, EngineId.MASTER_DNS.name)
         ContextCompat.startForegroundService(
             context,
             Intent(context, MasterDnsVpnService::class.java).apply {
