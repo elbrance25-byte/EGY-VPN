@@ -26,9 +26,7 @@ android {
 
     packaging {
         jniLibs {
-            // DNSTT and MasterDnsVPN are built with the same gomobile/Go toolchain.
-            // They share the identical libgojni runtime, so package one copy.
-            pickFirsts += setOf("lib/**/libgojni.so")
+            // MasterDnsVPN duplicate libgojni.so is stripped after runtime hash verification.
         }
     }
 
@@ -136,6 +134,8 @@ val downloadDnsttAssets by tasks.registering {
                     val entries = aar.entries()
                     while (entries.hasMoreElements()) {
                         val entry = entries.nextElement()
+                        // A single Go JNI runtime is shared by both engines.
+                        if (entry.name.endsWith("/libgojni.so")) continue
                         zout.putNextEntry(ZipEntry(entry.name))
                         if (entry.name == "classes.jar") {
                             filteredMasterClasses.inputStream().use { it.copyTo(zout) }
