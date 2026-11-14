@@ -10,7 +10,6 @@ import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.egyvpn.app.R
 import com.egyvpn.masterdns.gomobile.mobile.Mobile
 import com.egyvpn.masterdns.gomobile.mobile.MobileProtectCallback
 import org.json.JSONObject
