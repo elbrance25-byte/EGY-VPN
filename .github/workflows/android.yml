@@ -59,6 +59,8 @@ jobs:
           go mod edit -replace="www.bamsoftware.com/git/dnstt.git=$DNSTT_ROOT/go_src"
           go mod edit -replace="masterdnsvpn-go=$MASTERDNS_ROOT"
           go mod tidy
+          # gomobile invokes the bind generator from the app module context.
+          go get golang.org/x/mobile/bind@v0.0.0-20260312152759-81488f6aeb60
           gomobile bind -v -target android/arm64,android/arm -androidapi 26 -o "$GITHUB_WORKSPACE/app/libs/egyengine-upstream.aar" ./mobile
           test -s "$GITHUB_WORKSPACE/app/libs/egyengine-upstream.aar"
       - name: Validate Android Manifest
