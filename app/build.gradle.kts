@@ -1,4 +1,9 @@
 import java.net.URL
+import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
  
 plugins {
@@ -47,15 +52,50 @@ android {
 
 
 val downloadDnsttAssets by tasks.registering {
+    val upstreamDnsttAar = file("libs/dnstt-upstream.aar")
     val dnsttAar = file("libs/dnstt.aar")
     val slipstreamSo = file("src/main/jniLibs/arm64-v8a/libslipstream_client.so")
-    outputs.files(dnsttAar, slipstreamSo)
+    outputs.files(upstreamDnsttAar, dnsttAar, slipstreamSo)
     doLast {
         dnsttAar.parentFile.mkdirs()
         slipstreamSo.parentFile.mkdirs()
-        if (!dnsttAar.exists()) {
+        if (!upstreamDnsttAar.exists()) {
             URL("https://raw.githubusercontent.com/dnstt-xyz/dnstt_xyz_app/8155cde0353433646aceacca1414913fc9a304a7/android/app/libs/dnstt.aar").openStream().use { input ->
-                dnsttAar.outputStream().use { output -> input.copyTo(output) }
+                upstreamDnsttAar.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+        // Both libbox and the upstream DNSTT AAR bundle gomobile go.Seq runtime classes.
+        // Keep one copy (the one shipped with libbox) to avoid duplicate DEX classes.
+        if (!dnsttAar.exists() || dnsttAar.lastModified() < upstreamDnsttAar.lastModified()) {
+            val filteredClasses = file("$buildDir/dnstt-aar-filter/classes.jar")
+            filteredClasses.parentFile.mkdirs()
+            ZipFile(upstreamDnsttAar).use { aar ->
+                val classesEntry = aar.getEntry("classes.jar") ?: error("DNSTT AAR has no classes.jar")
+                ZipInputStream(aar.getInputStream(classesEntry)).use { zin ->
+                    ZipOutputStream(FileOutputStream(filteredClasses)).use { zout ->
+                        while (true) {
+                            val entry = zin.nextEntry ?: break
+                            if (!entry.name.startsWith("go/")) {
+                                zout.putNextEntry(ZipEntry(entry.name))
+                                zin.copyTo(zout)
+                                zout.closeEntry()
+                            }
+                        }
+                    }
+                }
+                ZipOutputStream(FileOutputStream(dnsttAar)).use { zout ->
+                    val entries = aar.entries()
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
+                        zout.putNextEntry(ZipEntry(entry.name))
+                        if (entry.name == "classes.jar") {
+                            filteredClasses.inputStream().use { it.copyTo(zout) }
+                        } else {
+                            aar.getInputStream(entry).use { it.copyTo(zout) }
+                        }
+                        zout.closeEntry()
+                    }
+                }
             }
         }
         if (!slipstreamSo.exists()) {
@@ -63,7 +103,8 @@ val downloadDnsttAssets by tasks.registering {
                 slipstreamSo.outputStream().use { output -> input.copyTo(output) }
             }
         }
-        check(dnsttAar.length() == 7274524L) { "DNSTT AAR size mismatch; pinned upstream asset may have changed" }
+        check(upstreamDnsttAar.length() == 7274524L) { "DNSTT AAR size mismatch; pinned upstream asset may have changed" }
+        check(dnsttAar.length() > 1024L) { "Filtered DNSTT AAR is missing or incomplete" }
         check(slipstreamSo.length() == 5923312L) { "Slipstream arm64 binary size mismatch; pinned upstream asset may have changed" }
     }
 }
