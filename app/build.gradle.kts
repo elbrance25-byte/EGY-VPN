@@ -24,11 +24,6 @@ android {
         versionName = "1.1"
     }
 
-    packaging {
-        jniLibs {
-            // MasterDnsVPN duplicate libgojni.so is stripped after runtime hash verification.
-        }
-    }
 
     // libbox bundles large native libraries; publish separate installable APKs
     // for the two Android ABIs commonly used by phones, not a 300+ MB universal APK.
@@ -58,23 +53,22 @@ android {
 
 
 val downloadDnsttAssets by tasks.registering {
-    val upstreamDnsttAar = file("libs/dnstt-upstream.aar")
-    val dnsttAar = file("libs/dnstt.aar")
-    val upstreamMasterAar = file("libs/masterdnsvpn-upstream.aar")
-    val masterAar = file("libs/masterdnsvpn.aar")
+    val upstreamEngineAar = file("libs/egyengine-upstream.aar")
+    val engineAar = file("libs/egyengine.aar")
     val slipstreamSo = file("src/main/jniLibs/arm64-v8a/libslipstream_client.so")
-    outputs.files(upstreamDnsttAar, dnsttAar, upstreamMasterAar, masterAar, slipstreamSo)
+    outputs.files(upstreamEngineAar, engineAar, slipstreamSo)
     doLast {
-        dnsttAar.parentFile.mkdirs()
+        engineAar.parentFile.mkdirs()
         slipstreamSo.parentFile.mkdirs()
-        check(upstreamDnsttAar.exists() && upstreamDnsttAar.length() > 1024L) { "DNSTT Go AAR missing; build it with gomobile before Gradle" }
-        // Both libbox and the upstream DNSTT AAR bundle gomobile go.Seq runtime classes.
-        // Keep one copy (the one shipped with libbox) to avoid duplicate DEX classes.
-        if (!dnsttAar.exists() || dnsttAar.lastModified() < upstreamDnsttAar.lastModified()) {
-            val filteredClasses = file("$buildDir/dnstt-aar-filter/classes.jar")
+        check(upstreamEngineAar.exists() && upstreamEngineAar.length() > 1024L) {
+            "Unified DNSTT/MasterDnsVPN AAR missing; build it with gomobile before Gradle"
+        }
+        // libbox already supplies go.Seq; keep the single shared runtime classes once.
+        if (!engineAar.exists() || engineAar.lastModified() < upstreamEngineAar.lastModified()) {
+            val filteredClasses = file("$buildDir/egyengine-aar-filter/classes.jar")
             filteredClasses.parentFile.mkdirs()
-            ZipFile(upstreamDnsttAar).use { aar ->
-                val classesEntry = aar.getEntry("classes.jar") ?: error("DNSTT AAR has no classes.jar")
+            ZipFile(upstreamEngineAar).use { aar ->
+                val classesEntry = aar.getEntry("classes.jar") ?: error("Unified engine AAR has no classes.jar")
                 ZipInputStream(aar.getInputStream(classesEntry)).use { zin ->
                     ZipOutputStream(FileOutputStream(filteredClasses)).use { zout ->
                         while (true) {
@@ -87,7 +81,7 @@ val downloadDnsttAssets by tasks.registering {
                         }
                     }
                 }
-                ZipOutputStream(FileOutputStream(dnsttAar)).use { zout ->
+                ZipOutputStream(FileOutputStream(engineAar)).use { zout ->
                     val entries = aar.entries()
                     while (entries.hasMoreElements()) {
                         val entry = entries.nextElement()
@@ -107,50 +101,10 @@ val downloadDnsttAssets by tasks.registering {
                 slipstreamSo.outputStream().use { output -> input.copyTo(output) }
             }
         }
-        check(dnsttAar.length() > 1024L) { "Filtered DNSTT AAR is missing or incomplete" }
+        check(engineAar.length() > 1024L) { "Filtered unified engine AAR is missing or incomplete" }
         check(slipstreamSo.length() == 5923312L) { "Slipstream arm64 binary size mismatch; pinned upstream asset may have changed" }
-        // MasterDnsVPN gomobile AAR is built from its pinned Go source in CI.
-        check(upstreamMasterAar.exists() && upstreamMasterAar.length() > 1024L) {
-            "MasterDnsVPN AAR missing; run the Go/gomobile build step before Gradle"
-        }
-        if (!masterAar.exists() || masterAar.lastModified() < upstreamMasterAar.lastModified()) {
-            val filteredMasterClasses = file("$buildDir/masterdns-aar-filter/classes.jar")
-            filteredMasterClasses.parentFile.mkdirs()
-            ZipFile(upstreamMasterAar).use { aar ->
-                val classesEntry = aar.getEntry("classes.jar") ?: error("MasterDnsVPN AAR has no classes.jar")
-                ZipInputStream(aar.getInputStream(classesEntry)).use { zin ->
-                    ZipOutputStream(FileOutputStream(filteredMasterClasses)).use { zout ->
-                        while (true) {
-                            val entry = zin.nextEntry ?: break
-                            if (!entry.name.startsWith("go/")) {
-                                zout.putNextEntry(ZipEntry(entry.name))
-                                zin.copyTo(zout)
-                                zout.closeEntry()
-                            }
-                        }
-                    }
-                }
-                ZipOutputStream(FileOutputStream(masterAar)).use { zout ->
-                    val entries = aar.entries()
-                    while (entries.hasMoreElements()) {
-                        val entry = entries.nextElement()
-                        // A single Go JNI runtime is shared by both engines.
-                        if (entry.name.endsWith("/libgojni.so")) continue
-                        zout.putNextEntry(ZipEntry(entry.name))
-                        if (entry.name == "classes.jar") {
-                            filteredMasterClasses.inputStream().use { it.copyTo(zout) }
-                        } else {
-                            aar.getInputStream(entry).use { it.copyTo(zout) }
-                        }
-                        zout.closeEntry()
-                    }
-                }
-            }
-        }
-        check(masterAar.length() > 1024L) { "Filtered MasterDnsVPN AAR is missing or incomplete" }
     }
 }
-
 tasks.named("preBuild").configure {
     dependsOn(downloadDnsttAssets)
 }
@@ -167,8 +121,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.github.singbox-android:libbox:1.14.4")
-    implementation(files("libs/dnstt.aar"))
-    implementation(files("libs/masterdnsvpn.aar"))
+    implementation(files("libs/egyengine.aar"))
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
