@@ -1,3 +1,5 @@
+import java.net.URL
+
  
 plugins {
     id("com.android.application")
@@ -52,7 +54,7 @@ val downloadDnsttAssets by tasks.registering {
         dnsttAar.parentFile.mkdirs()
         slipstreamSo.parentFile.mkdirs()
         if (!dnsttAar.exists()) {
-            java.net.URL("https://raw.githubusercontent.com/dnstt-xyz/dnstt_xyz_app/8155cde0353433646aceacca1414913fc9a304a7/android/app/libs/dnstt.aar").openStream().use { input ->
+            URL("https://raw.githubusercontent.com/dnstt-xyz/dnstt_xyz_app/8155cde0353433646aceacca1414913fc9a304a7/android/app/libs/dnstt.aar").openStream().use { input ->
                 dnsttAar.outputStream().use { output -> input.copyTo(output) }
             }
         }
