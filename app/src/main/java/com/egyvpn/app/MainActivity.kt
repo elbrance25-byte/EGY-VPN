@@ -200,7 +200,7 @@ private fun EgyVpnHome() {
                         }
                         Spacer(Modifier.height(14.dp))
                         Text(if (isConnected) "متصل" else "غير متصل", color = if (isConnected) Gold else Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                        Text("اختر sing-box وأضف ملف إعداد JSON", color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center)
+                        Text("اختر المحرك وأضف ملف إعداد JSON", color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(18.dp))
                         Button(
                             onClick = {
@@ -323,7 +323,7 @@ private fun EgyVpnHome() {
                     minLines = 5,
                     maxLines = 9,
                     label = { Text("الصق رابط أو ملف الإعداد") },
-                    placeholder = { Text("الصق إعداد JSON للمحرك المختار") },
+                    placeholder = { Text(if (selectedEngine == EngineId.DNSTT.name) "DNSTT / Slipstream JSON" else "sing-box JSON") },
                     shape = RoundedCornerShape(14.dp)
                 )
                 Spacer(Modifier.height(10.dp))
