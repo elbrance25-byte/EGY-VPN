@@ -17,6 +17,17 @@ android {
         versionName = "1.1"
     }
 
+    // libbox bundles large native libraries; publish separate installable APKs
+    // for the two Android ABIs commonly used by phones, not a 300+ MB universal APK.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
+        }
+    }
+
     buildFeatures {
         compose = true
     }
