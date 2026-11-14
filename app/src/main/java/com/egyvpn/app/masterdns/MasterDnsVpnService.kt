@@ -16,6 +16,7 @@ import com.egyvpn.masterdns.gomobile.mobile.MobileProtectCallback
 import org.json.JSONObject
 import java.io.File
 import java.net.InetSocketAddress
+import java.net.InetAddress
 import java.net.Socket
 
 /**
@@ -90,7 +91,7 @@ class MasterDnsVpnService : VpnService() {
             .addAddress("10.23.0.2", 32)
             .addAddress("fd00::1", 128)
             .addRoute("0.0.0.0", 0)
-            .addDnsServer(dnsServer)
+            .addDnsServer(InetAddress.getByName(dnsServer))
             .setMtu(MTU)
             .setBlocking(true)
         runCatching { builder.addRoute("::", 0) }
