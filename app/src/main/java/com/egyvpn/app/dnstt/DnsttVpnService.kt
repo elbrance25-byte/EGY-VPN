@@ -325,7 +325,7 @@ class DnsttVpnService : VpnService() {
             // LitronSSH export does not currently provide an SSH host-key fingerprint to pin.
             session.setConfig("StrictHostKeyChecking", "no")
             session.setConfig("PreferredAuthentications", "password,keyboard-interactive")
-            session.serverAliveInterval = 15000
+            session.setServerAliveInterval(15000)
             session.connect(30000)
             session.setPortForwardingD("127.0.0.1", proxyPort)
             sshSession = session
@@ -548,29 +548,7 @@ class DnsttVpnService : VpnService() {
                 return
             }
             Log.d(TAG, "Tunnel verification passed")
-                Log.d(TAG, "Verifying tunnel connectivity...")
-                // Use longer timeout for DNS tunnels (they're inherently slow)
-                val verifyTimeout = if (transportType == "slipstream") 15000 else 20000
-                if (!verifyTunnelConnection(verifyTimeout)) {
-                    Log.e(TAG, "Tunnel verification failed - connection not working")
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        stateCallback?.invoke("error")
-                    }
-                    // Clean up
-                    if (transportType == "slipstream") {
-                        stopSlipstreamClient()
-                    } else {
-                        stopDnsttClient()
-                    }
-                    vpnInterface?.close()
-                    vpnInterface = null
-                    releaseWakeLock()
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
-                    return
-                }
-                Log.d(TAG, "Tunnel verification passed")
-            }
+
 
             isRunning.set(true)
             shouldRun.set(true)
