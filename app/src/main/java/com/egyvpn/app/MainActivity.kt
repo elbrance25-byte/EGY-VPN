@@ -71,14 +71,16 @@ private val Muted = Color(0xFFB9B4C9)
  * services cannot race to replace the system VPN interface.
  */
 private fun stopOtherVpnEngines(context: android.content.Context, keep: String) {
+    // stopService avoids starting a background service solely to send it a stop action.
+    // Each service releases its TUN and native engine from onDestroy().
     if (keep != EngineId.SING_BOX.name) {
-        context.startService(Intent(context, EgyVpnService::class.java).setAction(EgyVpnService.ACTION_STOP))
+        context.stopService(Intent(context, EgyVpnService::class.java))
     }
     if (keep != EngineId.DNSTT.name) {
-        context.startService(Intent(context, DnsttVpnService::class.java).setAction(DnsttVpnService.ACTION_DISCONNECT))
+        context.stopService(Intent(context, DnsttVpnService::class.java))
     }
     if (keep != EngineId.MASTER_DNS.name) {
-        context.startService(Intent(context, MasterDnsVpnService::class.java).setAction(MasterDnsVpnService.ACTION_STOP))
+        context.stopService(Intent(context, MasterDnsVpnService::class.java))
     }
 }
 
