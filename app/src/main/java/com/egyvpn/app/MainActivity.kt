@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.egyvpn.app.core.FreeServerRepository
 import com.egyvpn.app.core.EngineId
 import com.egyvpn.app.core.SingBoxConfigValidator
 import com.egyvpn.app.core.TunnelProfile
@@ -58,6 +59,9 @@ import com.egyvpn.app.vpn.EgyVpnService
 import com.egyvpn.app.dnstt.DnsttVpnService
 import com.egyvpn.app.masterdns.MasterDnsVpnService
 import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val Navy = Color(0xFF171329)
 private val Panel = Color(0xFF24203A)
@@ -104,6 +108,9 @@ private fun EgyVpnHome() {
     var pendingConfig by remember { mutableStateOf<String?>(null) }
     var pendingEngine by remember { mutableStateOf(EngineId.SING_BOX.name) }
     var connectedEngine by remember { mutableStateOf(prefs.getString("connected_engine", EngineId.SING_BOX.name) ?: EngineId.SING_BOX.name) }
+    var fetchingServers by remember { mutableStateOf(false) }
+    var serverStatus by remember { mutableStateOf("مصادر مجتمعية مجانية؛ قد تتوقف الخوادم في أي وقت") }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     val startVpnService: (String) -> Unit = { config ->
         stopOtherVpnEngines(context, EngineId.SING_BOX.name)
@@ -357,6 +364,49 @@ private fun EgyVpnHome() {
                 }
 
                 Spacer(Modifier.height(12.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Panel),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                        Text("السيرفرات المجانية", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Spacer(Modifier.height(5.dp))
+                        Text(serverStatus, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                        Spacer(Modifier.height(10.dp))
+                        Button(
+                            onClick = {
+                                fetchingServers = true
+                                serverStatus = "جارٍ جلب المصادر وفحص إمكانية الوصول..."
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        runCatching { FreeServerRepository.fetchFirstReachable() }
+                                    }
+                                    fetchingServers = false
+                                    result.onSuccess { server ->
+                                        selectedEngine = EngineId.SING_BOX.name
+                                        prefs.edit().putString("engine", selectedEngine).apply()
+                                        profile = server.config
+                                        profileName = "مجاني • ${server.protocol.uppercase()} • ${server.name.substringAfterLast('-')}"
+                                        serverStatus = "تم العثور على نقطة يمكن الوصول إلى منفذها. سيجري المحرك التحقق من المصادقة والنفق عند الاتصال."
+                                        Toast.makeText(context, "تم تحميل إعداد خادم مجاني", Toast.LENGTH_LONG).show()
+                                    }.onFailure { error ->
+                                        serverStatus = error.message ?: "لم يتم العثور على خادم متاح حاليًا"
+                                        Toast.makeText(context, serverStatus, Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            },
+                            enabled = !fetchingServers && !isConnected,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Purple)
+                        ) {
+                            Text(if (fetchingServers) "جارٍ الفحص..." else "جلب وفحص سيرفر مجاني", color = Color.White)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
                 SectionTitle("إعداد الاتصال")
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
@@ -424,7 +474,7 @@ private fun EgyVpnHome() {
 
                 Spacer(Modifier.height(18.dp))
                 Text(
-                    "تنبيه: لا يتضمن التطبيق خوادم مجانية مضمونة. يلزم إدخال إعدادات خادم صحيح لكل محرك، ويجب اختبار مرور الإنترنت فعليًا بعد الاتصال.",
+                    "الخوادم المجانية من مصادر عامة مستقلة وليست مملوكة لنا. فحص المنفذ لا يضمن نجاح النفق أو الخصوصية؛ تجنب استخدامها للحسابات الحساسة.",
                     color = Gold,
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center,
