@@ -40,6 +40,20 @@
                 android:value="User-requested DNS tunneling VPN" />
         </service>
 
+
+        <service
+            android:name=".masterdns.MasterDnsVpnService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-requested MasterDnsVPN DNS tunnel" />
+        </service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true">
