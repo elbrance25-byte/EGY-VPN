@@ -3,6 +3,7 @@ package com.egyvpn.app.vpn
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.VpnService
+import android.system.OsConstants
 import io.nekohasekai.libbox.BridgeOptions
 import io.nekohasekai.libbox.BridgeSession
 import io.nekohasekai.libbox.ConnectionOwner
@@ -104,9 +105,19 @@ internal class EgyVpnPlatform(private val service: VpnService) : PlatformInterfa
     }
     override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {}
     override fun getInterfaces(): NetworkInterfaceIterator {
+        val connectivity = service.getSystemService(ConnectivityManager::class.java)
+        val activeNetwork = connectivity.activeNetwork
+        val linkProperties = activeNetwork?.let { connectivity.getLinkProperties(it) }
+        val capabilities = activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
+        val activeName = linkProperties?.interfaceName
         val values = runCatching {
             JavaNetworkInterface.getNetworkInterfaces()?.toList().orEmpty().mapNotNull { network ->
                 runCatching {
+                    val isActive = network.name == activeName
+                    var interfaceFlags = if (network.isUp) OsConstants.IFF_UP or OsConstants.IFF_RUNNING else 0
+                    if (network.isLoopback) interfaceFlags = interfaceFlags or OsConstants.IFF_LOOPBACK
+                    if (network.isPointToPoint) interfaceFlags = interfaceFlags or OsConstants.IFF_POINTOPOINT
+                    if (network.supportsMulticast()) interfaceFlags = interfaceFlags or OsConstants.IFF_MULTICAST
                     BoxNetworkInterface().apply {
                         name = network.name
                         index = network.index
@@ -115,7 +126,23 @@ internal class EgyVpnPlatform(private val service: VpnService) : PlatformInterfa
                             val host = if (address.address is Inet6Address) address.address.hostAddress.substringBefore('%') else address.address.hostAddress
                             "$host/${address.networkPrefixLength}"
                         })
-                        type = Libbox.InterfaceTypeOther
+                        flags = interfaceFlags
+                        type = when {
+                            isActive && capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> Libbox.InterfaceTypeWIFI
+                            isActive && capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> Libbox.InterfaceTypeCellular
+                            isActive && capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true -> Libbox.InterfaceTypeEthernet
+                            else -> Libbox.InterfaceTypeOther
+                        }
+                        dnsServer = StringValues(if (isActive) linkProperties?.dnsServers?.mapNotNull { it.hostAddress }.orEmpty() else emptyList())
+                        dnsSearchDomain = StringValues(if (isActive) linkProperties?.domains?.split(' ')?.filter { it.isNotBlank() }.orEmpty() else emptyList())
+                        gateway = StringValues(
+                            if (isActive) linkProperties?.routes
+                                ?.filter { it.destination.prefixLength == 0 }
+                                ?.mapNotNull { it.gateway?.takeUnless { gateway -> gateway.isAnyLocalAddress }?.hostAddress }
+                                .orEmpty()
+                            else emptyList()
+                        )
+                        metered = isActive && capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == false
                     }
                 }.getOrNull()
             }
