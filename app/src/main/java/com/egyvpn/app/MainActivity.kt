@@ -147,7 +147,9 @@ private fun EgyVpnHome() {
                 putExtra(DnsttVpnService.EXTRA_CONGESTION_CONTROL, config.optString("congestion_control", "dcubic"))
                 putExtra(DnsttVpnService.EXTRA_KEEP_ALIVE_INTERVAL, config.optInt("keep_alive_interval", 400))
                 putExtra(DnsttVpnService.EXTRA_GSO, config.optBoolean("gso", false))
-                putExtra(DnsttVpnService.EXTRA_SSH_MODE, false)
+                putExtra(DnsttVpnService.EXTRA_SSH_USERNAME, config.optString("ssh_username", ""))
+                putExtra(DnsttVpnService.EXTRA_SSH_PASSWORD, config.optString("ssh_password", ""))
+                putExtra(DnsttVpnService.EXTRA_SSH_MODE, config.optBoolean("ssh_mode", config.optString("provider") == "LitronSSH"))
             }
         )
     }
