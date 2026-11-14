@@ -122,6 +122,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.github.singbox-android:libbox:1.14.4")
+    implementation("com.github.mwiede:jsch:0.2.20")
     implementation(files("libs/egyengine.aar"))
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
