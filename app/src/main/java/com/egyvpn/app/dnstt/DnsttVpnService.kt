@@ -433,7 +433,9 @@ class DnsttVpnService : VpnService() {
             val builder = Builder()
                 .setSession("DNSTT Tunnel")
                 .addAddress("10.0.0.2", 32)
+            .addAddress("fd00::1", 128)
                 .addRoute("0.0.0.0", 0)
+        runCatching { builder.addRoute("::", 0) }
                 .addDnsServer(dnsServer)
                 .setMtu(1500)
                 .setBlocking(true)
