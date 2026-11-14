@@ -30,6 +30,7 @@ class EgyVpnService : VpnService(), CommandServerHandler {
         private const val CHANNEL_ID = "egy_vpn_connection"
         private const val NOTIFICATION_ID = 4101
         private const val TAG = "EgyVpnService"
+        @Volatile private var libboxSetupDone = false
     }
 
     private val platform by lazy { EgyVpnPlatform(this) }
@@ -74,14 +75,20 @@ class EgyVpnService : VpnService(), CommandServerHandler {
         val work = getExternalFilesDir(null) ?: filesDir
         work.mkdirs()
         Libbox.setLocale(Locale.getDefault().toLanguageTag())
-        Libbox.setup(SetupOptions().apply {
-            basePath = base.absolutePath
-            workingPath = work.absolutePath
-            tempPath = cacheDir.absolutePath
-            logMaxLines = 1000
-            appVersion = packageManager.getPackageInfo(packageName, 0).longVersionCode.toString()
-            appMarketingVersion = "1.1"
-        })
+        synchronized(EgyVpnService::class.java) {
+            if (!libboxSetupDone) {
+                Libbox.setup(SetupOptions().apply {
+                    basePath = base.absolutePath
+                    workingPath = work.absolutePath
+                    tempPath = cacheDir.absolutePath
+                    logMaxLines = 1000
+                    @Suppress("DEPRECATION")
+                    appVersion = packageManager.getPackageInfo(packageName, 0).versionCode.toString()
+                    appMarketingVersion = "1.1"
+                })
+                libboxSetupDone = true
+            }
+        }
         val server = CommandServer(this, platform)
         commandServer = server
         server.start()
