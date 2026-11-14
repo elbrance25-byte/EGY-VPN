@@ -74,7 +74,7 @@ private fun EgyVpnHome() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("egy_vpn_private", 0) }
     var selectedEngine by remember {
-        mutableStateOf(prefs.getString("engine", EngineId.DNSTT.name) ?: EngineId.DNSTT.name)
+        mutableStateOf(prefs.getString("engine", EngineId.SING_BOX.name) ?: EngineId.SING_BOX.name)
     }
     var profile by remember { mutableStateOf(prefs.getString("profile", "") ?: "") }
     var profileName by remember { mutableStateOf(prefs.getString("profile_name", "") ?: "") }
@@ -220,8 +220,8 @@ private fun EgyVpnHome() {
                     }
                     val subtitle = when (engine) {
                         EngineId.SING_BOX -> "VLESS • VMess • Trojan • Shadowsocks • Hysteria2"
-                        EngineId.DNSTT -> "نفق DNS مشفر"
-                        EngineId.MASTER_DNS -> "محرك DNS مستقل"
+                        EngineId.DNSTT -> "نفق DNS مشفر • قيد الدمج"
+                        EngineId.MASTER_DNS -> "محرك DNS مستقل • قيد الدمج"
                     }
                     val selected = selectedEngine == engine.name
                     Card(
