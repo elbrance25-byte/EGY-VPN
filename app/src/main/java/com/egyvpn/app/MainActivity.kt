@@ -119,6 +119,28 @@ class MainActivity : ComponentActivity() {
 
                         Spacer(modifier = Modifier.height(24.dp))
 
+                        OutlinedButton(
+                            onClick = {
+                                try {
+                                    startActivity(
+                                        Intent(
+                                            Intent.ACTION_VIEW,
+                                            android.net.Uri.parse("https://static.vpnbook.com/freevpn/wireguard-vpn")
+                                        )
+                                    )
+                                    statusText = "اختر سيرفرًا وأنشئ ملف WireGuard صالحًا لمدة 7 أيام"
+                                } catch (_: Exception) {
+                                    statusText = "تعذر فتح صفحة مزود السيرفر"
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text("الحصول على سيرفر مجاني")
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
                         Button(
                             onClick = {
                                 configPicker.launch(
