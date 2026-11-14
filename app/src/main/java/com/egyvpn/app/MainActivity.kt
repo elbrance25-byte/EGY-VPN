@@ -201,10 +201,25 @@ private fun EgyVpnHome() {
             runCatching {
                 context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                     ?: error("تعذر قراءة الملف")
-            }.onSuccess {
-                profile = it
-                if (profileName.isBlank()) profileName = "إعداد مستورد"
-                Toast.makeText(context, "تم استيراد الإعداد — احفظه للاحتفاظ به", Toast.LENGTH_SHORT).show()
+            }.onSuccess { importedText ->
+                val parsed = if (selectedEngine == EngineId.DNSTT.name) {
+                    runCatching { LitronAccountImporter.toDnsttJson(importedText) }.getOrNull()
+                } else null
+                if (parsed != null) {
+                    profile = parsed
+                    if (profileName.isBlank()) profileName = "حساب LitronSSH"
+                    selectedServerName = "حساب SlowDNS / FastDNS مستورد"
+                    prefs.edit()
+                        .putString("profile", parsed)
+                        .putString("profile_name", profileName)
+                        .putString("selected_server_name", selectedServerName)
+                        .apply()
+                    Toast.makeText(context, "تم التعرف على صيغة LitronSSH وتحويلها لإعداد DNSTT", Toast.LENGTH_LONG).show()
+                } else {
+                    profile = importedText
+                    if (profileName.isBlank()) profileName = "إعداد مستورد"
+                    Toast.makeText(context, "تم استيراد الملف. لو كان حساب LitronSSH استخدم ملف Copy all details بصيغة TXT.", Toast.LENGTH_SHORT).show()
+                }
             }.onFailure {
                 Toast.makeText(context, "فشل قراءة الملف", Toast.LENGTH_LONG).show()
             }
