@@ -88,10 +88,12 @@ class MasterDnsVpnService : VpnService() {
         val builder = Builder()
             .setSession("EGY VPN - MasterDnsVPN")
             .addAddress("10.23.0.2", 32)
+            .addAddress("fd00::1", 128)
             .addRoute("0.0.0.0", 0)
             .addDnsServer(dnsServer)
             .setMtu(MTU)
             .setBlocking(true)
+        runCatching { builder.addRoute("::", 0) }
         runCatching { builder.addDisallowedApplication(packageName) }
         tun = builder.establish() ?: error("تعذر إنشاء واجهة VPN في Android")
 
