@@ -7,6 +7,8 @@ import java.net.Socket
 import java.net.URL
 import java.net.URLDecoder
 import java.util.Base64
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Fetches public community subscriptions, parses supported sing-box share links,
@@ -31,22 +33,28 @@ object FreeServerRepository {
         for (feed in feeds) {
             try {
                 val body = download(feed)
-                val lines = decodeSubscription(body).lineSequence()
+                val candidates = decodeSubscription(body).lineSequence()
                     .map { it.trim() }
                     .filter { it.startsWith("vless://", true) || it.startsWith("trojan://", true) }
                     .distinct()
-                    .take(250)
-                for (line in lines) {
-                    val candidate = runCatching { toSingBox(line) }.getOrNull() ?: continue
-                    val endpoint = JSONObject(candidate.config).getJSONArray("outbounds").getJSONObject(0)
-                    val host = endpoint.getString("server")
-                    val port = endpoint.getInt("server_port")
-                    val key = "$host:$port"
-                    if (key in found) continue
-                    if (tcpReachable(host, port)) {
-                        found[key] = candidate
+                    .take(120)
+                    .mapNotNull { runCatching { toSingBox(it) }.getOrNull() }
+                    .distinctBy { "${it.host}:${it.port}" }
+                    .filterNot { "${it.host}:${it.port}" in found }
+                val pool = Executors.newFixedThreadPool(12)
+                try {
+                    val checks = candidates.map { candidate ->
+                        pool.submit<Candidate?> {
+                            if (tcpReachable(candidate.host, candidate.port)) candidate else null
+                        }
+                    }
+                    for (check in checks) {
+                        val candidate = runCatching { check.get(2500, TimeUnit.MILLISECONDS) }.getOrNull() ?: continue
+                        found["${candidate.host}:${candidate.port}"] = candidate
                         if (found.size >= maxCount) return found.values.toList()
                     }
+                } finally {
+                    pool.shutdownNow()
                 }
             } catch (error: Exception) {
                 failures += (error.message ?: "تعذر قراءة المصدر")
@@ -82,7 +90,7 @@ object FreeServerRepository {
 
     private fun tcpReachable(host: String, port: Int): Boolean =
         runCatching {
-            Socket().use { it.connect(java.net.InetSocketAddress(host, port), 1800) }
+            Socket().use { it.connect(java.net.InetSocketAddress(host, port), 1400) }
             true
         }.getOrDefault(false)
 
