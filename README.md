@@ -6,56 +6,50 @@ The `main` branch is not modified by this work.
 
 ## Product requirements
 
-- A real Android VPN tunnel carrying device traffic, not a simulated connected state.
-- Mainstream VPN-style interface with engine selection and local profile import.
-- Free/public servers only; public endpoints must be validated and are not guaranteed to remain online.
+- Android `VpnService` full-device tunnel, with connection state reported by the selected engine.
+- Arabic-first VPN-style interface with engine selection and local profile import.
 - No WireGuard or OpenVPN engine.
+- No fabricated server addresses or credentials. The app currently requires a valid user-supplied server profile; free public servers are not bundled or guaranteed.
 
-## Selected transport research
+## Integrated engines
 
-1. **sing-box / libbox 1.14.4** — VLESS, VMess, Trojan, Shadowsocks and Hysteria2. Android integration requires a `CommandServer`, a complete `PlatformInterface`, and a `VpnService.openTun(TunOptions)` implementation. The upstream Android app is the reference for this lifecycle.
-2. **DNSTT / Slipstream** — the upstream DNSTT Client Android implementation establishes a TUN, excludes its own tunnel sockets from VPN routing, forwards traffic through a local SOCKS5 client, and verifies the tunnel before reporting connected. It requires the upstream Go mobile AAR; Slipstream additionally requires its native Android library. The dependency and license notices must be bundled with any port.
-3. **MasterDnsVPN** — remains subject to source/API and dependency-license audit before integration.
+### sing-box / libbox 1.14.4
+- Supports profiles using VLESS, VMess, Trojan, Shadowsocks and Hysteria2 outbounds.
+- Android integration uses `CommandServer`, a `PlatformInterface`, and `VpnService.Builder` TUN creation.
+- Outbound sockets are protected from routing back into the VPN.
+- A successful service start is not a substitute for device-side traffic and leak testing.
 
-References:
-- https://github.com/SagerNet/sing-box-for-android
-- https://github.com/singbox-android/libbox
-- https://github.com/dnstt-xyz/dnstt_xyz_app
-- https://github.com/masterking32/MasterDnsVPN
-- https://github.com/RevocGG/MasterDnsVPN-AndroidGG
+### DNSTT / Slipstream
+- DNSTT uses the upstream Go client and the app's Android TUN/SOCKS5 forwarding path.
+- Slipstream support uses the upstream Android bridge and its native ARM64 library.
+- Slipstream is currently available on ARM64 builds only; DNSTT is built for ARM64 and ARMv7.
+- The Go mobile APIs for DNSTT and MasterDnsVPN are compiled into one unified gomobile AAR to avoid conflicting Go JNI runtimes.
 
-## Current implementation status
+### MasterDnsVPN
+- Uses the pinned upstream Android/Go implementation and its gVisor-based TUN-to-SOCKS5 bridge.
+- Android `VpnService` protects the engine's outbound sockets and attaches the device TUN to the local proxy.
+- Requires a server profile with `domains`, `encryption_key`, and `resolvers`; no credentials or public endpoints are invented.
 
-### Implemented
-- Shared engine contract and serialized connection manager.
-- libbox 1.14.4 dependency declared.
-- Local fail-closed validation for sing-box JSON profiles and supported outbound types.
-- Updated EGY VPN Compose home screen with engine selection.
-- Local profile text/file import and private on-device profile storage.
-- Honest disconnected state; connection control is disabled until a real engine adapter is connected.
+## Build and artifacts
 
-### Not yet implemented / not yet verified
-- sing-box `CommandServer` + `PlatformInterface` + Android TUN adapter.
-- DNSTT/Slipstream native dependency packaging and VPN service adapter.
-- MasterDnsVPN adapter and dependency audit.
-- VPN permission flow and full foreground-service lifecycle.
-- End-to-end traffic verification, IPv4/IPv6 leak tests, DNS leak tests, reconnect and network handover tests.
-- Physical-device validation.
+The GitHub Actions workflow builds ARM64 and ARMv7 debug APKs using Java 17, Gradle 8.9, Android SDK 35, and a pinned Go/gomobile toolchain.
 
-**Important:** A successful Gradle build only verifies that the APK compiles. It does not prove that a tunnel works. The app must not report CONNECTED until a supported engine is running, Android TUN is attached, and traffic verification succeeds.
+The latest successful build is available from the repository's Actions workflow:
+https://github.com/elbrance25-byte/EGY-VPN/actions
 
 ## Profile formats
 
-The sing-box validator accepts a complete sing-box JSON configuration containing an `outbounds` array with at least one supported outbound type:
+- **sing-box:** a complete sing-box JSON configuration containing an `outbounds` array with at least one supported outbound type.
+- **DNSTT:** JSON fields `transport` (`dnstt` or `slipstream`), `dns_server`, and `tunnel_domain`; DNSTT also requires `public_key`.
+- **MasterDnsVPN:** JSON fields `domains`, `encryption_key`, and `resolvers` (resolver IPs separated by newlines). Optional values include `dns_server`, `listen_port`, `protocol_type`, and encryption options.
 
-- `vless`
-- `vmess`
-- `trojan`
-- `shadowsocks`
-- `hysteria2`
+Importing or saving a profile only stores it locally. A profile must contain valid server-side settings and the server must be reachable before a connection can work.
 
-The UI currently imports and stores profile text locally. Importing or saving a profile does not mean it is connected or validated by a running engine. Server addresses and credentials must come from a user-provided profile or a verified public source; credentials are never fabricated.
+## Verification status
 
-## Build
+- CI build: successful for ARM64 and ARMv7 debug APKs.
+- APK archive integrity: verified.
+- Android runtime: not yet tested on a physical phone.
+- End-to-end internet traffic, DNS/IPv6 leak behaviour, reconnect, network handover, and server compatibility: still require device-side testing.
 
-The Android CI workflow builds the debug APK with Java 17, Gradle 8.9 and Android SDK 35.
+A green Gradle build proves compilation and packaging only; it does not prove that a tunnel carries working internet traffic.
