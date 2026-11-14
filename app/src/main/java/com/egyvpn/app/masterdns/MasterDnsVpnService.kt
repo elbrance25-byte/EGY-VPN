@@ -100,9 +100,9 @@ class MasterDnsVpnService : VpnService() {
             override fun protect(fd: Int): Boolean = this@MasterDnsVpnService.protect(fd)
         })
 
-        val profileDir = File(filesDir, "masterdns/$PROFILE_ID").apply { mkdirs() }
+        val profileDirFile = File(filesDir, "masterdns/$PROFILE_ID").apply { mkdirs() }
         val config = Mobile.newDefaultConfig().apply {
-            profileDir = profileDir.absolutePath
+            profileDir = profileDirFile.absolutePath
             resolversInline = resolvers
             this.domains = domains
             dataEncryptionMethod = input.optInt("data_encryption_method", 1).toLong()
