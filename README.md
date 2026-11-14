@@ -1,39 +1,52 @@
 # EGY VPN
 
-Android VPN client project. Development is currently on
+Android VPN client project. Development is on
 [`feature/multi-engine-foundation`](https://github.com/elbrance25-byte/EGY-VPN/tree/feature/multi-engine-foundation).
+The `main` branch is not modified by this work.
 
-## Selected transport engines
+## Product requirements
 
-The project is limited to these three engines:
+- A real Android VPN tunnel carrying device traffic, not a simulated connected state.
+- Mainstream VPN-style interface with engine selection and local profile import.
+- Free/public servers only; public endpoints must be validated and are not guaranteed to remain online.
+- No WireGuard or OpenVPN engine.
 
-1. **sing-box / libbox** — VLESS, VMess, Trojan, Shadowsocks and Hysteria2.
-2. **DNSTT / Slipstream** — DNS tunnel transport.
-3. **MasterDnsVPN** — separate DNS tunnel implementation.
+## Selected transport research
 
-Only one engine may own the Android VPN/TUN session at a time. No WireGuard or OpenVPN
-integration is part of this project.
+1. **sing-box / libbox 1.14.4** — VLESS, VMess, Trojan, Shadowsocks and Hysteria2. Android integration requires a `CommandServer`, a complete `PlatformInterface`, and a `VpnService.openTun(TunOptions)` implementation. The upstream Android app is the reference for this lifecycle.
+2. **DNSTT / Slipstream** — the upstream DNSTT Client Android implementation establishes a TUN, excludes its own tunnel sockets from VPN routing, forwards traffic through a local SOCKS5 client, and verifies the tunnel before reporting connected. It requires the upstream Go mobile AAR; Slipstream additionally requires its native Android library. The dependency and license notices must be bundled with any port.
+3. **MasterDnsVPN** — remains subject to source/API and dependency-license audit before integration.
+
+References:
+- https://github.com/SagerNet/sing-box-for-android
+- https://github.com/singbox-android/libbox
+- https://github.com/dnstt-xyz/dnstt_xyz_app
+- https://github.com/masterking32/MasterDnsVPN
+- https://github.com/RevocGG/MasterDnsVPN-AndroidGG
 
 ## Current implementation status
 
-- [x] Shared engine contract and serialized connection manager.
-- [x] Initial dependency wiring for libbox 1.14.4.
-- [x] Explicit Android coroutines runtime dependency.
-- [x] Local fail-closed validation for sing-box JSON profiles and supported outbound types.
-- [ ] Android VpnService and VPN permission/foreground lifecycle.
-- [ ] libbox CommandServer + PlatformInterface integration.
-- [ ] End-to-end tunnel and traffic-leak tests.
-- [ ] DNSTT / Slipstream adapter.
-- [ ] MasterDnsVPN adapter.
+### Implemented
+- Shared engine contract and serialized connection manager.
+- libbox 1.14.4 dependency declared.
+- Local fail-closed validation for sing-box JSON profiles and supported outbound types.
+- Updated EGY VPN Compose home screen with engine selection.
+- Local profile text/file import and private on-device profile storage.
+- Honest disconnected state; connection control is disabled until a real engine adapter is connected.
 
-**Important:** Selecting an engine or passing local JSON validation does not mean a VPN is
-connected. The app must not report CONNECTED until the native engine has started, the TUN
-interface is attached, and end-to-end traffic checks pass.
+### Not yet implemented / not yet verified
+- sing-box `CommandServer` + `PlatformInterface` + Android TUN adapter.
+- DNSTT/Slipstream native dependency packaging and VPN service adapter.
+- MasterDnsVPN adapter and dependency audit.
+- VPN permission flow and full foreground-service lifecycle.
+- End-to-end traffic verification, IPv4/IPv6 leak tests, DNS leak tests, reconnect and network handover tests.
+- Physical-device validation.
 
-## sing-box profile input
+**Important:** A successful Gradle build only verifies that the APK compiles. It does not prove that a tunnel works. The app must not report CONNECTED until a supported engine is running, Android TUN is attached, and traffic verification succeeds.
 
-The first sing-box integration accepts a complete sing-box JSON configuration. It must
-contain an `outbounds` array with at least one supported outbound type:
+## Profile formats
+
+The sing-box validator accepts a complete sing-box JSON configuration containing an `outbounds` array with at least one supported outbound type:
 
 - `vless`
 - `vmess`
@@ -41,10 +54,7 @@ contain an `outbounds` array with at least one supported outbound type:
 - `shadowsocks`
 - `hysteria2`
 
-The local validator is only an early check. libbox performs authoritative schema validation
-when the engine adapter is integrated. Server addresses, UUIDs, passwords, TLS settings and
-other credentials must come from a user-supplied profile or a verified public source; the
-application does not fabricate server credentials.
+The UI currently imports and stores profile text locally. Importing or saving a profile does not mean it is connected or validated by a running engine. Server addresses and credentials must come from a user-provided profile or a verified public source; credentials are never fabricated.
 
 ## Build
 
