@@ -10,8 +10,8 @@ import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.egyvpn.masterdns.gomobile.mobile.Mobile
-import com.egyvpn.masterdns.gomobile.mobile.MobileProtectCallback
+import mobile.Mobile
+import mobile.MobileProtectCallback
 import org.json.JSONObject
 import java.io.File
 import java.net.InetSocketAddress
