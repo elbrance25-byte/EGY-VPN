@@ -152,7 +152,7 @@ class EgyVpnService : VpnService(), CommandServerHandler {
     }
 
     private fun publishState(connected: Boolean) {
-        sendBroadcast(Intent(ACTION_STATE).setPackage(packageName).putExtra("connected", connected))
+        sendBroadcast(Intent(ACTION_STATE).setPackage(packageName).putExtra("connected", connected).putExtra("engine", "SING_BOX"))
     }
 
     private fun createNotificationChannel() {
