@@ -24,6 +24,14 @@ android {
         versionName = "1.1"
     }
 
+    packaging {
+        jniLibs {
+            // DNSTT and MasterDnsVPN are built with the same gomobile/Go toolchain.
+            // They share the identical libgojni runtime, so package one copy.
+            pickFirsts += setOf("lib/**/libgojni.so")
+        }
+    }
+
     // libbox bundles large native libraries; publish separate installable APKs
     // for the two Android ABIs commonly used by phones, not a 300+ MB universal APK.
     splits {
@@ -61,11 +69,7 @@ val downloadDnsttAssets by tasks.registering {
     doLast {
         dnsttAar.parentFile.mkdirs()
         slipstreamSo.parentFile.mkdirs()
-        if (!upstreamDnsttAar.exists()) {
-            URL("https://raw.githubusercontent.com/dnstt-xyz/dnstt_xyz_app/8155cde0353433646aceacca1414913fc9a304a7/android/app/libs/dnstt.aar").openStream().use { input ->
-                upstreamDnsttAar.outputStream().use { output -> input.copyTo(output) }
-            }
-        }
+        check(upstreamDnsttAar.exists() && upstreamDnsttAar.length() > 1024L) { "DNSTT Go AAR missing; build it with gomobile before Gradle" }
         // Both libbox and the upstream DNSTT AAR bundle gomobile go.Seq runtime classes.
         // Keep one copy (the one shipped with libbox) to avoid duplicate DEX classes.
         if (!dnsttAar.exists() || dnsttAar.lastModified() < upstreamDnsttAar.lastModified()) {
@@ -105,7 +109,6 @@ val downloadDnsttAssets by tasks.registering {
                 slipstreamSo.outputStream().use { output -> input.copyTo(output) }
             }
         }
-        check(upstreamDnsttAar.length() == 7274524L) { "DNSTT AAR size mismatch; pinned upstream asset may have changed" }
         check(dnsttAar.length() > 1024L) { "Filtered DNSTT AAR is missing or incomplete" }
         check(slipstreamSo.length() == 5923312L) { "Slipstream arm64 binary size mismatch; pinned upstream asset may have changed" }
         // MasterDnsVPN gomobile AAR is built from its pinned Go source in CI.
