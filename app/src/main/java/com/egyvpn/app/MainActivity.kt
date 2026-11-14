@@ -30,6 +30,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -109,6 +112,11 @@ private fun EgyVpnHome() {
     var pendingEngine by remember { mutableStateOf(EngineId.SING_BOX.name) }
     var connectedEngine by remember { mutableStateOf(prefs.getString("connected_engine", EngineId.SING_BOX.name) ?: EngineId.SING_BOX.name) }
     var fetchingServers by remember { mutableStateOf(false) }
+    var engineMenuExpanded by remember { mutableStateOf(false) }
+    var serverDialogOpen by remember { mutableStateOf(false) }
+    var showManualSettings by remember { mutableStateOf(false) }
+    var serverCandidates by remember { mutableStateOf<List<FreeServerRepository.Candidate>>(emptyList()) }
+    var selectedServerName by remember { mutableStateOf(prefs.getString("selected_server_name", "لم يتم اختيار سيرفر") ?: "لم يتم اختيار سيرفر") }
     var serverStatus by remember { mutableStateOf("مصادر مجتمعية مجانية؛ قد تتوقف الخوادم في أي وقت") }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
@@ -325,7 +333,127 @@ private fun EgyVpnHome() {
                 }
 
                 Spacer(Modifier.height(22.dp))
-                SectionTitle("محرك الاتصال")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Panel),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text("محرك الاتصال", color = Muted, fontSize = 12.sp)
+                        Spacer(Modifier.height(5.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    when (selectedEngine) {
+                                        EngineId.DNSTT.name -> "DNSTT / Slipstream"
+                                        EngineId.MASTER_DNS.name -> "MasterDnsVPN"
+                                        else -> "sing-box"
+                                    },
+                                    color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold
+                                )
+                                Text("تغيير طريقة الاتصال", color = Muted, fontSize = 11.sp)
+                            }
+                            Box {
+                                OutlinedButton(onClick = { engineMenuExpanded = true }, shape = RoundedCornerShape(12.dp)) {
+                                    Text("تغيير", color = Gold)
+                                }
+                                DropdownMenu(expanded = engineMenuExpanded, onDismissRequest = { engineMenuExpanded = false }) {
+                                    EngineId.values().forEach { engine ->
+                                        val label = when (engine) {
+                                            EngineId.SING_BOX -> "sing-box"
+                                            EngineId.DNSTT -> "DNSTT / Slipstream"
+                                            EngineId.MASTER_DNS -> "MasterDnsVPN"
+                                        }
+                                        DropdownMenuItem(
+                                            text = { Text(label) },
+                                            onClick = {
+                                                selectedEngine = engine.name
+                                                prefs.edit().putString("engine", engine.name).apply()
+                                                engineMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Panel),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text("السيرفر الحالي", color = Muted, fontSize = 12.sp)
+                        Spacer(Modifier.height(5.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(selectedServerName, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                Text(serverStatus, color = Muted, fontSize = 11.sp, lineHeight = 15.sp)
+                            }
+                            Button(
+                                onClick = {
+                                    if (serverCandidates.isNotEmpty()) serverDialogOpen = true
+                                    else {
+                                        fetchingServers = true
+                                        serverStatus = "جارٍ تحميل وفحص قائمة السيرفرات المجانية..."
+                                        scope.launch {
+                                            val result = withContext(Dispatchers.IO) {
+                                                runCatching { FreeServerRepository.fetchReachableCandidates(25) }
+                                            }
+                                            fetchingServers = false
+                                            result.onSuccess { found ->
+                                                serverCandidates = found
+                                                serverStatus = "تم فحص ${found.size} سيرفر مبدئيًا"
+                                                serverDialogOpen = true
+                                            }.onFailure { error ->
+                                                serverStatus = error.message ?: "تعذر جلب السيرفرات"
+                                                Toast.makeText(context, serverStatus, Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !fetchingServers && !isConnected,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Purple)
+                            ) { Text(if (fetchingServers) "..." else "تغيير", color = Color.White) }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                serverCandidates = emptyList()
+                                fetchingServers = true
+                                serverStatus = "جارٍ تحديث مصادر السيرفرات..."
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        runCatching { FreeServerRepository.fetchReachableCandidates(25) }
+                                    }
+                                    fetchingServers = false
+                                    result.onSuccess { found ->
+                                        serverCandidates = found
+                                        serverStatus = "تم فحص ${found.size} سيرفر مبدئيًا"
+                                        serverDialogOpen = true
+                                    }.onFailure { error ->
+                                        serverStatus = error.message ?: "تعذر تحديث القائمة"
+                                    }
+                                }
+                            },
+                            enabled = !fetchingServers && !isConnected,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) { Text(if (fetchingServers) "جارٍ التحديث..." else "تحديث قائمة السيرفرات") }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                SectionTitle("إعداد الاتصال")
+                TextButton(onClick = { showManualSettings = !showManualSettings }) {
+                    Text(if (showManualSettings) "إخفاء الإعداد اليدوي ▲" else "إظهار الإعداد اليدوي ▼", color = Gold)
+                }
+                if (showManualSettings) {
+
                 Spacer(Modifier.height(10.dp))
                 EngineId.values().forEach { engine ->
                     val title = when (engine) {
@@ -479,6 +607,7 @@ private fun EgyVpnHome() {
                 ) { Text("مسح الإعداد المحفوظ", color = Muted) }
 
                 Spacer(Modifier.height(18.dp))
+                }
                 Text(
                     "الخوادم المجانية من مصادر عامة مستقلة وليست مملوكة لنا. فحص المنفذ لا يضمن نجاح النفق أو الخصوصية؛ تجنب استخدامها للحسابات الحساسة.",
                     color = Gold,
@@ -489,6 +618,50 @@ private fun EgyVpnHome() {
                 )
                 Spacer(Modifier.height(20.dp))
                 Text("EGY VPN • إصدار تجريبي", color = Muted, fontSize = 11.sp)
+            }
+            if (serverDialogOpen) {
+                AlertDialog(
+                    onDismissRequest = { serverDialogOpen = false },
+                    title = { Text("اختيار سيرفر مجاني") },
+                    text = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().height(360.dp).verticalScroll(rememberScrollState())
+                        ) {
+                            serverCandidates.forEach { candidate ->
+                                TextButton(
+                                    onClick = {
+                                        if (isConnected) {
+                                            Toast.makeText(context, "افصل الاتصال أولًا لتغيير السيرفر", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            profile = candidate.config
+                                            profileName = candidate.name
+                                            selectedServerName = "${candidate.protocol.uppercase()} • ${candidate.name}"
+                                            selectedEngine = EngineId.SING_BOX.name
+                                            prefs.edit()
+                                                .putString("engine", selectedEngine)
+                                                .putString("profile", candidate.config)
+                                                .putString("profile_name", candidate.name)
+                                                .putString("selected_server_name", selectedServerName)
+                                                .apply()
+                                            serverStatus = "تم اختيار السيرفر. اضغط اتصال لبدء النفق."
+                                            serverDialogOpen = false
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(Modifier.fillMaxWidth()) {
+                                        Text(candidate.name, color = Color.White, fontWeight = FontWeight.SemiBold)
+                                        Text("${candidate.protocol.uppercase()} • ${candidate.host}:${candidate.port}", color = Muted, fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { serverDialogOpen = false }) { Text("إغلاق") } },
+                    containerColor = Panel,
+                    titleContentColor = Color.White,
+                    textContentColor = Color.White
+                )
             }
         }
     }
