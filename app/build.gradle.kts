@@ -59,7 +59,7 @@ val downloadDnsttAssets by tasks.registering {
             }
         }
         if (!slipstreamSo.exists()) {
-            java.net.URL("https://raw.githubusercontent.com/dnstt-xyz/dnstt_xyz_app/8155cde0353433646aceacca1414913fc9a304a7/android/app/src/main/jniLibs/arm64-v8a/libslipstream_client.so").openStream().use { input ->
+            URL("https://raw.githubusercontent.com/dnstt-xyz/dnstt_xyz_app/8155cde0353433646aceacca1414913fc9a304a7/android/app/src/main/jniLibs/arm64-v8a/libslipstream_client.so").openStream().use { input ->
                 slipstreamSo.outputStream().use { output -> input.copyTo(output) }
             }
         }
