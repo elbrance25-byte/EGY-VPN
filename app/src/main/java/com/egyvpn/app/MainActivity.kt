@@ -55,6 +55,8 @@ import com.egyvpn.app.core.EngineId
 import com.egyvpn.app.core.SingBoxConfigValidator
 import com.egyvpn.app.core.TunnelProfile
 import com.egyvpn.app.vpn.EgyVpnService
+import com.egyvpn.app.dnstt.DnsttVpnService
+import org.json.JSONObject
 
 private val Navy = Color(0xFF171329)
 private val Panel = Color(0xFF24203A)
@@ -80,6 +82,8 @@ private fun EgyVpnHome() {
     var profileName by remember { mutableStateOf(prefs.getString("profile_name", "") ?: "") }
     var isConnected by remember { mutableStateOf(prefs.getBoolean("connected", false)) }
     var pendingConfig by remember { mutableStateOf<String?>(null) }
+    var pendingEngine by remember { mutableStateOf(EngineId.SING_BOX.name) }
+    var connectedEngine by remember { mutableStateOf(prefs.getString("connected_engine", EngineId.SING_BOX.name) ?: EngineId.SING_BOX.name) }
 
     val startVpnService: (String) -> Unit = { config ->
         ContextCompat.startForegroundService(
@@ -90,12 +94,33 @@ private fun EgyVpnHome() {
             }
         )
     }
+    val startDnsttService: (String) -> Unit = { raw ->
+        val config = JSONObject(raw)
+        val transport = config.optString("transport", "dnstt").lowercase()
+        ContextCompat.startForegroundService(
+            context,
+            Intent(context, DnsttVpnService::class.java).apply {
+                action = DnsttVpnService.ACTION_CONNECT
+                putExtra(DnsttVpnService.EXTRA_PROXY_HOST, config.optString("proxy_host", "127.0.0.1"))
+                putExtra(DnsttVpnService.EXTRA_PROXY_PORT, config.optInt("proxy_port", 7000))
+                putExtra(DnsttVpnService.EXTRA_DNS_SERVER, config.optString("dns_server", ""))
+                putExtra(DnsttVpnService.EXTRA_TUNNEL_DOMAIN, config.optString("tunnel_domain", ""))
+                putExtra(DnsttVpnService.EXTRA_PUBLIC_KEY, config.optString("public_key", ""))
+                putExtra(DnsttVpnService.EXTRA_TRANSPORT_TYPE, transport)
+                putExtra(DnsttVpnService.EXTRA_CONGESTION_CONTROL, config.optString("congestion_control", "dcubic"))
+                putExtra(DnsttVpnService.EXTRA_KEEP_ALIVE_INTERVAL, config.optInt("keep_alive_interval", 400))
+                putExtra(DnsttVpnService.EXTRA_GSO, config.optBoolean("gso", false))
+                putExtra(DnsttVpnService.EXTRA_SSH_MODE, false)
+            }
+        )
+    }
     val vpnPermission = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val config = pendingConfig
         if (result.resultCode == Activity.RESULT_OK && config != null) {
-            startVpnService(config)
+            if (pendingEngine == EngineId.DNSTT.name) startDnsttService(config)
+            else startVpnService(config)
         } else {
             Toast.makeText(context, "لم يتم منح إذن VPN", Toast.LENGTH_SHORT).show()
         }
@@ -107,6 +132,8 @@ private fun EgyVpnHome() {
             override fun onReceive(context: android.content.Context?, intent: Intent?) {
                 if (intent?.action == EgyVpnService.ACTION_STATE) {
                     isConnected = intent.getBooleanExtra("connected", false)
+                    connectedEngine = intent.getStringExtra("engine") ?: connectedEngine
+                    prefs.edit().putBoolean("connected", isConnected).putString("connected_engine", connectedEngine).apply()
                 }
             }
         }
@@ -178,25 +205,53 @@ private fun EgyVpnHome() {
                         Button(
                             onClick = {
                                 if (isConnected) {
-                                    context.startService(Intent(context, EgyVpnService::class.java).setAction(EgyVpnService.ACTION_STOP))
+                                    if (connectedEngine == EngineId.DNSTT.name) {
+                                        context.startService(Intent(context, DnsttVpnService::class.java).setAction(DnsttVpnService.ACTION_DISCONNECT))
+                                    } else {
+                                        context.startService(Intent(context, EgyVpnService::class.java).setAction(EgyVpnService.ACTION_STOP))
+                                    }
                                 } else {
                                     val candidate = profile.trim()
-                                    val check = SingBoxConfigValidator.validate(
-                                        TunnelProfile("default", EngineId.SING_BOX, "sing-box-json", candidate)
-                                    )
-                                    if (selectedEngine != EngineId.SING_BOX.name) {
-                                        Toast.makeText(context, "محرك sing-box هو المحرك المتاح حاليًا للاختبار", Toast.LENGTH_LONG).show()
-                                    } else if (!check.valid) {
-                                        Toast.makeText(context, check.error ?: "إعداد غير صالح", Toast.LENGTH_LONG).show()
-                                    } else {
-                                        pendingConfig = candidate
-                                        val permissionIntent = VpnService.prepare(context)
-                                        if (permissionIntent == null) startVpnService(candidate)
-                                        else vpnPermission.launch(permissionIntent)
+                                    when (selectedEngine) {
+                                        EngineId.SING_BOX.name -> {
+                                            val check = SingBoxConfigValidator.validate(
+                                                TunnelProfile("default", EngineId.SING_BOX, "sing-box-json", candidate)
+                                            )
+                                            if (!check.valid) {
+                                                Toast.makeText(context, check.error ?: "إعداد sing-box غير صالح", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                pendingConfig = candidate
+                                                pendingEngine = EngineId.SING_BOX.name
+                                                val permissionIntent = VpnService.prepare(context)
+                                                if (permissionIntent == null) startVpnService(candidate)
+                                                else vpnPermission.launch(permissionIntent)
+                                            }
+                                        }
+                                        EngineId.DNSTT.name -> {
+                                            val config = runCatching { JSONObject(candidate) }.getOrNull()
+                                            if (config == null) {
+                                                Toast.makeText(context, "إعداد DNSTT يجب أن يكون JSON صالحًا", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                val transport = config.optString("transport", "dnstt").lowercase()
+                                                val dns = config.optString("dns_server").trim()
+                                                val domain = config.optString("tunnel_domain").trim()
+                                                val key = config.optString("public_key").trim()
+                                                if (transport !in setOf("dnstt", "slipstream") || dns.isBlank() || domain.isBlank() || (transport == "dnstt" && key.isBlank())) {
+                                                    Toast.makeText(context, "يلزم dns_server و tunnel_domain، و public_key مع DNSTT", Toast.LENGTH_LONG).show()
+                                                } else {
+                                                    pendingConfig = candidate
+                                                    pendingEngine = EngineId.DNSTT.name
+                                                    val permissionIntent = VpnService.prepare(context)
+                                                    if (permissionIntent == null) startDnsttService(candidate)
+                                                    else vpnPermission.launch(permissionIntent)
+                                                }
+                                            }
+                                        }
+                                        else -> Toast.makeText(context, "محرك MasterDnsVPN لم يُربط بعد", Toast.LENGTH_LONG).show()
                                     }
                                 }
                             },
-                            enabled = isConnected || (selectedEngine == EngineId.SING_BOX.name && profile.isNotBlank()),
+                            enabled = isConnected || (selectedEngine != EngineId.MASTER_DNS.name && profile.isNotBlank()),
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
@@ -204,7 +259,7 @@ private fun EgyVpnHome() {
                                 disabledContainerColor = Color(0xFF51476B)
                             )
                         ) {
-                            Text(if (isConnected) "قطع الاتصال" else "اتصال عبر sing-box", color = Color.White, fontSize = 14.sp)
+                            Text(if (isConnected) "قطع الاتصال" else if (selectedEngine == EngineId.DNSTT.name) "اتصال عبر DNSTT / Slipstream" else "اتصال عبر sing-box", color = Color.White, fontSize = 14.sp)
                         }
                     }
                 }
@@ -268,7 +323,7 @@ private fun EgyVpnHome() {
                     minLines = 5,
                     maxLines = 9,
                     label = { Text("الصق رابط أو ملف الإعداد") },
-                    placeholder = { Text("الصق إعداد sing-box بصيغة JSON") },
+                    placeholder = { Text("الصق إعداد JSON للمحرك المختار") },
                     shape = RoundedCornerShape(14.dp)
                 )
                 Spacer(Modifier.height(10.dp))
