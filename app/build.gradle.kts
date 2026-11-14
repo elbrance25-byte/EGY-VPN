@@ -52,16 +52,14 @@ val downloadDnsttAssets by tasks.registering {
         dnsttAar.parentFile.mkdirs()
         slipstreamSo.parentFile.mkdirs()
         if (!dnsttAar.exists()) {
-            ant.get(
-                src = "https://raw.githubusercontent.com/dnstt-xyz/dnstt_xyz_app/8155cde0353433646aceacca1414913fc9a304a7/android/app/libs/dnstt.aar",
-                dest = dnsttAar
-            )
+            java.net.URL("https://raw.githubusercontent.com/dnstt-xyz/dnstt_xyz_app/8155cde0353433646aceacca1414913fc9a304a7/android/app/libs/dnstt.aar").openStream().use { input ->
+                dnsttAar.outputStream().use { output -> input.copyTo(output) }
+            }
         }
         if (!slipstreamSo.exists()) {
-            ant.get(
-                src = "https://raw.githubusercontent.com/dnstt-xyz/dnstt_xyz_app/8155cde0353433646aceacca1414913fc9a304a7/android/app/src/main/jniLibs/arm64-v8a/libslipstream_client.so",
-                dest = slipstreamSo
-            )
+            java.net.URL("https://raw.githubusercontent.com/dnstt-xyz/dnstt_xyz_app/8155cde0353433646aceacca1414913fc9a304a7/android/app/src/main/jniLibs/arm64-v8a/libslipstream_client.so").openStream().use { input ->
+                slipstreamSo.outputStream().use { output -> input.copyTo(output) }
+            }
         }
         check(dnsttAar.length() == 7274524L) { "DNSTT AAR size mismatch; pinned upstream asset may have changed" }
         check(slipstreamSo.length() == 5923312L) { "Slipstream arm64 binary size mismatch; pinned upstream asset may have changed" }
