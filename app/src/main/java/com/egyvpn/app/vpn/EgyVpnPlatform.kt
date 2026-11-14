@@ -3,9 +3,6 @@ package com.egyvpn.app.vpn
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.VpnService
-import android.os.Process
-import io.nekohasekai.libbox.AutoRedirectHandler
-import io.nekohasekai.libbox.AutoRedirectSession
 import io.nekohasekai.libbox.BridgeOptions
 import io.nekohasekai.libbox.BridgeSession
 import io.nekohasekai.libbox.ConnectionOwner
@@ -58,13 +55,13 @@ internal class EgyVpnPlatform(private val service: VpnService) : PlatformInterfa
             }
             val r4 = options.inet4RouteAddress
             if (r4.hasNext()) {
-                while (r4.hasNext()) builder.addRoute(r4.next().toIpPrefix())
+                while (r4.hasNext()) builder.addRoute(r4.next())
             } else if (options.inet4Address.hasNext()) {
                 builder.addRoute("0.0.0.0", 0)
             }
             val r6 = options.inet6RouteAddress
             if (r6.hasNext()) {
-                while (r6.hasNext()) builder.addRoute(r6.next().toIpPrefix())
+                while (r6.hasNext()) builder.addRoute(r6.next())
             } else if (options.inet6Address.hasNext()) {
                 builder.addRoute("::", 0)
             }
@@ -129,9 +126,6 @@ internal class EgyVpnPlatform(private val service: VpnService) : PlatformInterfa
     override fun tailscaleHostname(): String = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
     override fun usePlatformBridge() = false
     override fun createBridge(options: BridgeOptions?): BridgeSession = error("Platform bridge is not supported")
-    override fun usePlatformAutoRedirect() = false
-    override fun createAutoRedirect(options: ByteArray?, handler: AutoRedirectHandler?): AutoRedirectSession =
-        error("Platform auto-redirect is not supported")
 
     fun closeTun() {
         runCatching { tunDescriptor?.close() }
@@ -148,10 +142,5 @@ internal class EgyVpnPlatform(private val service: VpnService) : PlatformInterfa
         private var index = 0
         override fun hasNext() = index < values.size
         override fun next() = values[index++]
-    }
-    private fun Any.toIpPrefix(): String {
-        val address = javaClass.getMethod("address").invoke(this) as String
-        val prefix = javaClass.getMethod("prefix").invoke(this) as Int
-        return "$address/$prefix"
     }
 }
