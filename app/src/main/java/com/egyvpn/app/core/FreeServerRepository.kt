@@ -19,9 +19,14 @@ object FreeServerRepository {
         "https://raw.githubusercontent.com/chaishpish/free_server_v2ray/main/@TFMTProto"
     )
 
-    data class Candidate(val name: String, val config: String, val protocol: String)
+    data class Candidate(val name: String, val config: String, val protocol: String, val host: String, val port: Int)
 
-    fun fetchFirstReachable(): Candidate {
+    fun fetchFirstReachable(): Candidate =
+        fetchReachableCandidates(1).firstOrNull()
+            ?: throw IllegalStateException("لم يتم العثور على خادم مناسب")
+
+    fun fetchReachableCandidates(maxCount: Int = 25): List<Candidate> {
+        val found = linkedMapOf<String, Candidate>()
         val failures = mutableListOf<String>()
         for (feed in feeds) {
             try {
@@ -30,21 +35,27 @@ object FreeServerRepository {
                     .map { it.trim() }
                     .filter { it.startsWith("vless://", true) || it.startsWith("trojan://", true) }
                     .distinct()
-                    .take(80)
+                    .take(250)
                 for (line in lines) {
                     val candidate = runCatching { toSingBox(line) }.getOrNull() ?: continue
-                    val endpoint = JSONObject(candidate.config).getJSONArray("outbounds")
-                        .getJSONObject(0)
+                    val endpoint = JSONObject(candidate.config).getJSONArray("outbounds").getJSONObject(0)
                     val host = endpoint.getString("server")
                     val port = endpoint.getInt("server_port")
-                    if (tcpReachable(host, port)) return candidate
+                    val key = "$host:$port"
+                    if (key in found) continue
+                    if (tcpReachable(host, port)) {
+                        found[key] = candidate
+                        if (found.size >= maxCount) return found.values.toList()
+                    }
                 }
-                failures += "لا يوجد خادم VLESS/Trojan قابل للوصول في المصدر"
             } catch (error: Exception) {
                 failures += (error.message ?: "تعذر قراءة المصدر")
             }
         }
-        throw IllegalStateException(failures.firstOrNull() ?: "لم يتم العثور على خادم مناسب")
+        if (found.isEmpty()) {
+            throw IllegalStateException(failures.firstOrNull() ?: "لم يتم العثور على سيرفر قابل للوصول")
+        }
+        return found.values.toList()
     }
 
     private fun download(address: String): String {
@@ -151,6 +162,6 @@ object FreeServerRepository {
             .put("inbounds", inbounds)
             .put("outbounds", outbounds)
             .put("route", JSONObject().put("auto_detect_interface", true).put("final", "proxy"))
-        return Candidate(tag, config.toString(), scheme)
+        return Candidate(tag, config.toString(), scheme, host, port)
     }
 }
