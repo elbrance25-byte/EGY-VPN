@@ -306,7 +306,7 @@ private fun EgyVpnHome() {
                     }
                     val subtitle = when (engine) {
                         EngineId.SING_BOX -> "VLESS • VMess • Trojan • Shadowsocks • Hysteria2"
-                        EngineId.DNSTT -> "نفق DNS مشفر • قيد الدمج"
+                        EngineId.DNSTT -> "DNSTT / Slipstream عبر DNS"
                         EngineId.MASTER_DNS -> "نفق DNS مع تشفير وتوجيه كامل"
                     }
                     val selected = selectedEngine == engine.name
@@ -357,6 +357,17 @@ private fun EgyVpnHome() {
                     placeholder = { Text(when (selectedEngine) { EngineId.DNSTT.name -> "DNSTT / Slipstream JSON"; EngineId.MASTER_DNS.name -> "MasterDnsVPN JSON"; else -> "sing-box JSON" }) },
                     shape = RoundedCornerShape(14.dp)
                 )
+                Text(
+                    when (selectedEngine) {
+                        EngineId.DNSTT.name -> "DNSTT يحتاج dns_server و tunnel_domain و public_key. مع Slipstream استخدم transport=slipstream ولا تحتاج public_key. دعم Slipstream داخل نسخة ARM64 فقط."
+                        EngineId.MASTER_DNS.name -> "MasterDnsVPN يحتاج سيرفرًا مهيأً، مع domains و encryption_key و resolvers (عنوان IP لكل سطر)."
+                        else -> "sing-box يقبل ملف إعداد JSON كاملًا يتضمن outbounds صالحًا."
+                    },
+                    color = Muted,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)
+                )
                 Spacer(Modifier.height(10.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
@@ -391,7 +402,7 @@ private fun EgyVpnHome() {
 
                 Spacer(Modifier.height(18.dp))
                 Text(
-                    "تنبيه: واجهة التطبيق وحفظ الإعدادات يعملان. اتصال sing-box يحتاج إعداد JSON صالحًا. لا تعتبر حالة الاتصال دليلًا نهائيًا على مرور الإنترنت قبل اختباره على الجهاز.",
+                    "تنبيه: لا يتضمن التطبيق خوادم مجانية مضمونة. يلزم إدخال إعدادات خادم صحيح لكل محرك، ويجب اختبار مرور الإنترنت فعليًا بعد الاتصال.",
                     color = Gold,
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center,
