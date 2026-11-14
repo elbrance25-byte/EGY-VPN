@@ -119,6 +119,8 @@ class DnsttVpnService : VpnService() {
                 congestionControl = intent.getStringExtra(EXTRA_CONGESTION_CONTROL) ?: "dcubic"
                 keepAliveInterval = intent.getIntExtra(EXTRA_KEEP_ALIVE_INTERVAL, 400)
                 gso = intent.getBooleanExtra(EXTRA_GSO, false)
+                createNotificationChannel()
+                startForeground(NOTIFICATION_ID, createNotification("connecting"))
                 // Run connect on background thread to avoid ANR
                 Thread { connect() }.start()
                 START_STICKY
