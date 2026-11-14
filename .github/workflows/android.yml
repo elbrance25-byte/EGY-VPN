@@ -41,48 +41,26 @@ jobs:
         with:
           go-version: '1.25.0'
 
-      - name: Build MasterDnsVPN Go AAR
+      - name: Build unified DNSTT and MasterDnsVPN Go AAR
         run: |
           set -euo pipefail
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.3.13750724"
           go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20260312152759-81488f6aeb60
           export PATH="$(go env GOPATH)/bin:$PATH"
           gomobile init
-          # Build DNSTT from source with the exact same Go/gomobile toolchain as MasterDnsVPN.
-          # This guarantees both AARs use a compatible shared libgojni runtime.
-          mkdir -p /tmp/dnstt-source app/libs
+          mkdir -p /tmp/dnstt-source /tmp/masterdns-source app/libs
           curl -fsSL "https://codeload.github.com/dnstt-xyz/dnstt_xyz_app/zip/8155cde0353433646aceacca1414913fc9a304a7" -o /tmp/dnstt-source.zip
           unzip -q /tmp/dnstt-source.zip -d /tmp/dnstt-source
           DNSTT_ROOT="$(find /tmp/dnstt-source -mindepth 1 -maxdepth 1 -type d | head -n 1)"
-          cd "$DNSTT_ROOT/go_src"
-          gomobile bind -v -target android/arm64,android/arm -androidapi 26 -o "$GITHUB_WORKSPACE/app/libs/dnstt-upstream.aar" ./mobile
-          test -s "$GITHUB_WORKSPACE/app/libs/dnstt-upstream.aar"
-          cd "$GITHUB_WORKSPACE"
-          mkdir -p /tmp/masterdns-source
           curl -fsSL "https://codeload.github.com/RevocGG/MasterDnsVPN-AndroidGG/zip/88fe4fef79b67ca98543d4ee58a85962857e5721" -o /tmp/masterdns-source.zip
           unzip -q /tmp/masterdns-source.zip -d /tmp/masterdns-source
-          SOURCE_DIR="$(find /tmp/masterdns-source -mindepth 1 -maxdepth 1 -type d | head -n 1)"
-          cd "$SOURCE_DIR"
-          export GOFLAGS="-mod=mod"
-          gomobile bind -v -target android/arm64,android/arm -androidapi 26 -javapkg com.egyvpn.masterdns.gomobile -o "$GITHUB_WORKSPACE/app/libs/masterdnsvpn-upstream.aar" ./cmd/android
-          test -s "$GITHUB_WORKSPACE/app/libs/masterdnsvpn-upstream.aar"
-
-      - name: Verify shared Go JNI runtime
-        run: |
-          python3 - <<'PY'
-          import hashlib, zipfile
-          files = {"DNSTT": "app/libs/dnstt-upstream.aar", "MasterDnsVPN": "app/libs/masterdnsvpn-upstream.aar"}
-          for abi in ("arm64-v8a", "armeabi-v7a"):
-              entry = f"jni/{abi}/libgojni.so"
-              hashes = {}
-              for name, path in files.items():
-                  with zipfile.ZipFile(path) as archive:
-                      hashes[name] = hashlib.sha256(archive.read(entry)).hexdigest()
-              print(abi, hashes)
-              if len(set(hashes.values())) != 1:
-                  raise SystemExit(f"Go JNI runtime mismatch for {abi}; refusing unsafe APK packaging")
-          PY
-
+          MASTERDNS_ROOT="$(find /tmp/masterdns-source -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          cd native/egyengine
+          go mod edit -replace="www.bamsoftware.com/git/dnstt.git=$DNSTT_ROOT/go_src"
+          go mod edit -replace="masterdnsvpn-go=$MASTERDNS_ROOT"
+          go mod tidy
+          gomobile bind -v -target android/arm64,android/arm -androidapi 26 -o "$GITHUB_WORKSPACE/app/libs/egyengine-upstream.aar" ./mobile
+          test -s "$GITHUB_WORKSPACE/app/libs/egyengine-upstream.aar"
       - name: Validate Android Manifest
         run: |
           python3 - <<'PY'
