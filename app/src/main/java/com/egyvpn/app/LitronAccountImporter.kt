@@ -47,6 +47,9 @@ object LitronAccountImporter {
 
         return JSONObject().apply {
             put("transport", "dnstt")
+            put("ssh_mode", true)
+            put("ssh_username", username)
+            put("ssh_password", password)
             put("dns_server", "1.1.1.1")
             put("tunnel_domain", nameserver)
             put("public_key", publicKey)
