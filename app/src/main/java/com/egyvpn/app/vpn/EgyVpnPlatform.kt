@@ -134,7 +134,6 @@ internal class EgyVpnPlatform(private val service: VpnService) : PlatformInterfa
                             else -> Libbox.InterfaceTypeOther
                         }
                         dnsServer = StringValues(if (isActive) linkProperties?.dnsServers?.mapNotNull { it.hostAddress }.orEmpty() else emptyList())
-                        dnsSearchDomain = StringValues(if (isActive) linkProperties?.domains?.split(' ')?.filter { it.isNotBlank() }.orEmpty() else emptyList())
                         gateway = StringValues(
                             if (isActive) linkProperties?.routes
                                 ?.filter { it.destination.prefixLength == 0 }
