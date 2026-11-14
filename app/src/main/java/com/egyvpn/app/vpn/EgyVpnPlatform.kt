@@ -49,21 +49,37 @@ internal class EgyVpnPlatform(private val service: VpnService) : PlatformInterfa
             builder.addAddress(item.address(), item.prefix())
         }
         if (options.autoRoute) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                builder.setMetered(false)
+            }
             if (options.dnsMode.value != Libbox.DNSModeDisabled) {
                 val dns = options.dnsServerAddress
                 while (dns.hasNext()) builder.addDnsServer(dns.next())
             }
-            val r4 = options.inet4RouteAddress
-            if (r4.hasNext()) {
-                while (r4.hasNext()) builder.addRoute(r4.next())
-            } else if (options.inet4Address.hasNext()) {
-                builder.addRoute("0.0.0.0", 0)
-            }
-            val r6 = options.inet6RouteAddress
-            if (r6.hasNext()) {
-                while (r6.hasNext()) builder.addRoute(r6.next())
-            } else if (options.inet6Address.hasNext()) {
-                builder.addRoute("::", 0)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                val r4 = options.inet4RouteAddress
+                if (r4.hasNext()) {
+                    while (r4.hasNext()) builder.addRoute(r4.next())
+                } else if (options.inet4Address.hasNext()) {
+                    builder.addRoute("0.0.0.0", 0)
+                }
+                val r6 = options.inet6RouteAddress
+                if (r6.hasNext()) {
+                    while (r6.hasNext()) builder.addRoute(r6.next())
+                } else if (options.inet6Address.hasNext()) {
+                    builder.addRoute("::", 0)
+                }
+            } else {
+                val r4 = options.inet4RouteRange
+                while (r4.hasNext()) {
+                    val route = r4.next()
+                    builder.addRoute(route.address(), route.prefix())
+                }
+                val r6 = options.inet6RouteRange
+                while (r6.hasNext()) {
+                    val route = r6.next()
+                    builder.addRoute(route.address(), route.prefix())
+                }
             }
         }
         val pfd = builder.establish() ?: error("Android refused to establish the VPN interface")
