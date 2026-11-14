@@ -63,8 +63,8 @@ val downloadDnsttAssets by tasks.registering {
                 dest = slipstreamSo
             )
         }
-        check(dnsttAar.length() > 1024) { "DNSTT AAR download is missing or incomplete" }
-        check(slipstreamSo.length() > 1024) { "Slipstream arm64 binary download is missing or incomplete" }
+        check(dnsttAar.length() == 7274524L) { "DNSTT AAR size mismatch; pinned upstream asset may have changed" }
+        check(slipstreamSo.length() == 5923312L) { "Slipstream arm64 binary size mismatch; pinned upstream asset may have changed" }
     }
 }
 
