@@ -408,8 +408,14 @@ private fun EgyVpnHome() {
                             }
                             Button(
                                 onClick = {
-                                    if (selectedEngine != EngineId.SING_BOX.name) {
-                                        Toast.makeText(context, "مصادر السيرفرات المجانية الحالية تدعم VLESS/Trojan عبر sing-box فقط", Toast.LENGTH_LONG).show()
+                                    if (selectedEngine == EngineId.DNSTT.name) {
+                                        runCatching {
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://tunneltweak.com/server")))
+                                        }.onFailure {
+                                            Toast.makeText(context, "تعذر فتح صفحة الحصول على السيرفر", Toast.LENGTH_LONG).show()
+                                        }
+                                    } else if (selectedEngine != EngineId.SING_BOX.name) {
+                                        Toast.makeText(context, "أضف بيانات سيرفر متوافقة مع المحرك المختار", Toast.LENGTH_LONG).show()
                                     } else if (serverCandidates.isNotEmpty()) serverDialogOpen = true
                                     else {
                                         fetchingServers = true
@@ -433,32 +439,57 @@ private fun EgyVpnHome() {
                                 enabled = !fetchingServers && !isConnected,
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Purple)
-                            ) { Text(if (fetchingServers) "..." else "تغيير", color = Color.White) }
+                            ) {
+                                Text(
+                                    when {
+                                        fetchingServers -> "..."
+                                        selectedEngine == EngineId.DNSTT.name -> "سيرفرات مجانية"
+                                        else -> "تغيير"
+                                    },
+                                    color = Color.White
+                                )
+                            }
                         }
                         Spacer(Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = {
-                                serverCandidates = emptyList()
-                                fetchingServers = true
-                                serverStatus = "جارٍ تحديث مصادر السيرفرات..."
-                                scope.launch {
-                                    val result = withContext(Dispatchers.IO) {
-                                        runCatching { FreeServerRepository.fetchReachableCandidates(25) }
+                        if (selectedEngine == EngineId.DNSTT.name) {
+                            OutlinedButton(
+                                onClick = { showManualSettings = true },
+                                enabled = !isConnected,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) { Text("إدخال / استيراد بيانات السيرفر") }
+                            Text(
+                                "بوابة السيرفرات تنشئ حساب DNSTT مؤقتًا بعد تسجيل الدخول. بعد إنشاء الحساب، انسخ النطاق والمفتاح العام وضعهما في إعداد JSON هنا. عنوان DNS مثل 1.1.1.1 هو مُحلّل فقط وليس سيرفر نفق.",
+                                color = Gold,
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp,
+                                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                            )
+                        } else if (selectedEngine == EngineId.SING_BOX.name) {
+                            OutlinedButton(
+                                onClick = {
+                                    serverCandidates = emptyList()
+                                    fetchingServers = true
+                                    serverStatus = "جارٍ تحديث مصادر السيرفرات..."
+                                    scope.launch {
+                                        val result = withContext(Dispatchers.IO) {
+                                            runCatching { FreeServerRepository.fetchReachableCandidates(25) }
+                                        }
+                                        fetchingServers = false
+                                        result.onSuccess { found ->
+                                            serverCandidates = found
+                                            serverStatus = "تم فحص ${found.size} سيرفر مبدئيًا"
+                                            serverDialogOpen = true
+                                        }.onFailure { error ->
+                                            serverStatus = error.message ?: "تعذر تحديث القائمة"
+                                        }
                                     }
-                                    fetchingServers = false
-                                    result.onSuccess { found ->
-                                        serverCandidates = found
-                                        serverStatus = "تم فحص ${found.size} سيرفر مبدئيًا"
-                                        serverDialogOpen = true
-                                    }.onFailure { error ->
-                                        serverStatus = error.message ?: "تعذر تحديث القائمة"
-                                    }
-                                }
-                            },
-                            enabled = !fetchingServers && !isConnected && selectedEngine == EngineId.SING_BOX.name,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) { Text(if (fetchingServers) "جارٍ التحديث..." else "تحديث قائمة السيرفرات") }
+                                },
+                                enabled = !fetchingServers && !isConnected,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) { Text(if (fetchingServers) "جارٍ التحديث..." else "تحديث قائمة السيرفرات") }
+                        }
                     }
                 }
 
