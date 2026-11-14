@@ -1,3 +1,4 @@
+
 name: Build EGY VPN APK
 
 on:
@@ -34,8 +35,37 @@ jobs:
         run: |
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
+      - name: Validate Android Manifest
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          path = Path("app/src/main/AndroidManifest.xml")
+          print("Checking:", path)
+
+          if not path.exists():
+              raise SystemExit("ERROR: Manifest file not found!")
+
+          try:
+              content = path.read_bytes()
+              content.decode("utf-8-sig")
+              ET.fromstring(content)
+              print("SUCCESS: AndroidManifest.xml is valid XML")
+          except UnicodeDecodeError as e:
+              print("ENCODING ERROR:", e)
+              raise
+          except ET.ParseError as e:
+              print("XML PARSE ERROR:", e)
+              raise
+          PY
+
       - name: Build APK
-        run: gradle --no-daemon assembleDebug
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify APK
+        run: |
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v5
