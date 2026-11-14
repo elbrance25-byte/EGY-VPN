@@ -34,7 +34,28 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.3.13750724"
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+
+      - name: Build MasterDnsVPN Go AAR
+        run: |
+          set -euo pipefail
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.3.13750724"
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          gomobile init
+          mkdir -p /tmp/masterdns-source app/libs
+          curl -fsSL "https://codeload.github.com/RevocGG/MasterDnsVPN-AndroidGG/zip/88fe4fef79b67ca98543d4ee58a85962857e5721" -o /tmp/masterdns-source.zip
+          unzip -q /tmp/masterdns-source.zip -d /tmp/masterdns-source
+          SOURCE_DIR="$(find /tmp/masterdns-source -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          cd "$SOURCE_DIR"
+          export GOFLAGS="-mod=mod"
+          gomobile bind -v -target android/arm64,android/arm -androidapi 26 -javapkg com.egyvpn.masterdns.gomobile -o "$GITHUB_WORKSPACE/app/libs/masterdnsvpn-upstream.aar" ./cmd/android
+          test -s "$GITHUB_WORKSPACE/app/libs/masterdnsvpn-upstream.aar"
 
       - name: Validate Android Manifest
         run: |
