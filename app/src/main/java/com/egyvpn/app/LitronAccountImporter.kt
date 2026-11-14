@@ -15,7 +15,7 @@ object LitronAccountImporter {
 
         val values = linkedMapOf<String, String>()
         text.lineSequence().forEach { line ->
-            val match = Regex("""^\\s*([^:=]{2,60})\\s*[:=]\\s*(.*?)\\s*$""").find(line)
+            val match = Regex("""^\s*([^:=]{2,60})\s*[:=]\s*(.*?)\s*$""").find(line)
                 ?: return@forEach
             val key = normalize(match.groupValues[1])
             val value = match.groupValues[2].trim().trim('"', '\'', '`')
