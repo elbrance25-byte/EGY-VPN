@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - main
+      - feature/multi-engine-foundation
 
 jobs:
   build:
