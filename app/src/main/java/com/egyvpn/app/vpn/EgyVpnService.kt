@@ -25,6 +25,7 @@ class EgyVpnService : VpnService(), CommandServerHandler {
     companion object {
         const val ACTION_CONNECT = "com.egyvpn.app.vpn.CONNECT"
         const val ACTION_STOP = "com.egyvpn.app.vpn.STOP"
+        const val ACTION_STATE = "com.egyvpn.app.vpn.STATE"
         const val EXTRA_CONFIG = "com.egyvpn.app.vpn.CONFIG"
         private const val CHANNEL_ID = "egy_vpn_connection"
         private const val NOTIFICATION_ID = 4101
@@ -56,6 +57,7 @@ class EgyVpnService : VpnService(), CommandServerHandler {
                 activeConfig = config
                 getSharedPreferences("egy_vpn_private", MODE_PRIVATE)
                     .edit().putBoolean("connected", true).apply()
+                publishState(true)
                 val manager = getSystemService(NotificationManager::class.java)
                 manager.notify(NOTIFICATION_ID, buildNotification("الاتصال نشط عبر sing-box"))
             } catch (error: Exception) {
@@ -124,6 +126,7 @@ class EgyVpnService : VpnService(), CommandServerHandler {
     private fun failConnection(message: String) {
         getSharedPreferences("egy_vpn_private", MODE_PRIVATE)
             .edit().putBoolean("connected", false).apply()
+        publishState(false)
         Log.e(TAG, message)
         stopTunnel()
         stopSelf()
@@ -132,12 +135,17 @@ class EgyVpnService : VpnService(), CommandServerHandler {
     private fun stopTunnel() {
         getSharedPreferences("egy_vpn_private", MODE_PRIVATE)
             .edit().putBoolean("connected", false).apply()
+        publishState(false)
         runCatching { commandServer?.closeService() }
         runCatching { commandServer?.close() }
         commandServer = null
         activeConfig = null
         platform.closeTun()
         stopForeground(STOP_FOREGROUND_REMOVE)
+    }
+
+    private fun publishState(connected: Boolean) {
+        sendBroadcast(Intent(ACTION_STATE).setPackage(packageName).putExtra("connected", connected))
     }
 
     private fun createNotificationChannel() {
