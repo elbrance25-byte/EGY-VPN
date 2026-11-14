@@ -367,8 +367,21 @@ private fun EgyVpnHome() {
                                         DropdownMenuItem(
                                             text = { Text(label) },
                                             onClick = {
-                                                selectedEngine = engine.name
-                                                prefs.edit().putString("engine", engine.name).apply()
+                                                if (selectedEngine != engine.name) {
+                                                    selectedEngine = engine.name
+                                                    profile = ""
+                                                    profileName = ""
+                                                    selectedServerName = "لم يتم اختيار سيرفر"
+                                                    serverStatus = if (engine == EngineId.SING_BOX) {
+                                                        "مصادر VLESS/Trojan المجانية متاحة لهذا المحرك"
+                                                    } else {
+                                                        "أضف إعدادًا متوافقًا مع المحرك المختار"
+                                                    }
+                                                    prefs.edit().putString("engine", engine.name)
+                                                        .remove("profile").remove("profile_name")
+                                                        .remove("selected_server_name").apply()
+                                                    serverCandidates = emptyList()
+                                                }
                                                 engineMenuExpanded = false
                                             }
                                         )
@@ -395,7 +408,9 @@ private fun EgyVpnHome() {
                             }
                             Button(
                                 onClick = {
-                                    if (serverCandidates.isNotEmpty()) serverDialogOpen = true
+                                    if (selectedEngine != EngineId.SING_BOX.name) {
+                                        Toast.makeText(context, "مصادر السيرفرات المجانية الحالية تدعم VLESS/Trojan عبر sing-box فقط", Toast.LENGTH_LONG).show()
+                                    } else if (serverCandidates.isNotEmpty()) serverDialogOpen = true
                                     else {
                                         fetchingServers = true
                                         serverStatus = "جارٍ تحميل وفحص قائمة السيرفرات المجانية..."
@@ -440,7 +455,7 @@ private fun EgyVpnHome() {
                                     }
                                 }
                             },
-                            enabled = !fetchingServers && !isConnected,
+                            enabled = !fetchingServers && !isConnected && selectedEngine == EngineId.SING_BOX.name,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp)
                         ) { Text(if (fetchingServers) "جارٍ التحديث..." else "تحديث قائمة السيرفرات") }
