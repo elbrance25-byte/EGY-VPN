@@ -1,8 +1,11 @@
-
 package com.egyvpn.app
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.VpnService
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,32 +20,68 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import com.wireguard.config.Config
+import java.io.ByteArrayInputStream
 
 class MainActivity : ComponentActivity() {
+
+    private var statusText by mutableStateOf("غير متصل")
+    private var configLoaded by mutableStateOf(false)
+
+    private val statusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            statusText = intent?.getStringExtra(VpnTunnelService.EXTRA_MESSAGE)
+                ?: "تم تحديث حالة الاتصال"
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setContent {
-            var status by remember {
-                mutableStateOf("غير متصل")
-            }
+        configLoaded = getFileStreamPath(VpnTunnelService.CONFIG_FILE).isFile
 
-            val vpnPermissionLauncher =
-                rememberLauncherForActivityResult(
-                    ActivityResultContracts.StartActivityForResult()
-                ) { result ->
-                    if (result.resultCode == RESULT_OK) {
-                        val serviceIntent = Intent(
-                            this@MainActivity,
-                            VpnTunnelService::class.java
-                        )
-                        startService(serviceIntent)
-                        status = "تم منح الإذن وبدأت الخدمة المبدئية"
-                    } else {
-                        status = "لم يتم منح الإذن"
+        val filter = IntentFilter(VpnTunnelService.ACTION_STATUS)
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(statusReceiver, filter)
+        }
+
+        setContent {
+            val configPicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocument()
+            ) { uri ->
+                if (uri != null) {
+                    try {
+                        val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                            ?: throw IllegalStateException("تعذر قراءة الملف")
+                        val parsed = Config.parse(ByteArrayInputStream(bytes))
+                        require(parsed.peers.isNotEmpty()) {
+                            "ملف الإعداد لا يحتوي على بيانات السيرفر"
+                        }
+                        openFileOutput(VpnTunnelService.CONFIG_FILE, MODE_PRIVATE).use {
+                            it.write(bytes)
+                        }
+                        configLoaded = true
+                        statusText = "تم استيراد إعداد WireGuard بنجاح"
+                    } catch (error: Exception) {
+                        statusText = error.message?.take(140) ?: "ملف الإعداد غير صالح"
                     }
                 }
+            }
+
+            val vpnPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                if (result.resultCode == RESULT_OK) {
+                    startVpnService(VpnTunnelService.ACTION_CONNECT)
+                    statusText = "جارٍ إنشاء نفق WireGuard..."
+                } else {
+                    statusText = "لم يتم منح إذن VPN"
+                }
+            }
 
             MaterialTheme {
                 Surface(
@@ -65,36 +104,47 @@ class MainActivity : ComponentActivity() {
                         Spacer(modifier = Modifier.height(12.dp))
 
                         Text(
-                            text = "اتصال آمن وسهل",
+                            text = "اتصال WireGuard مشفّر",
                             color = Color.LightGray,
                             fontSize = 16.sp
                         )
 
-                        Spacer(modifier = Modifier.height(40.dp))
+                        Spacer(modifier = Modifier.height(32.dp))
 
                         Text(
-                            text = status,
+                            text = statusText,
                             color = Color(0xFFFFD166),
-                            fontSize = 20.sp
+                            fontSize = 18.sp
                         )
 
-                        Spacer(modifier = Modifier.height(28.dp))
+                        Spacer(modifier = Modifier.height(24.dp))
 
                         Button(
                             onClick = {
-                                val intent = VpnService.prepare(
-                                    this@MainActivity
+                                configPicker.launch(
+                                    arrayOf("text/plain", "application/octet-stream", "*/*")
                                 )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text(if (configLoaded) "استبدال ملف إعداد السيرفر" else "استيراد ملف إعداد السيرفر")
+                        }
 
-                                if (intent == null) {
-                                    val serviceIntent = Intent(
-                                        this@MainActivity,
-                                        VpnTunnelService::class.java
-                                    )
-                                    startService(serviceIntent)
-                                    status = "بدأت الخدمة المبدئية"
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Button(
+                            onClick = {
+                                if (!configLoaded) {
+                                    statusText = "استورد ملف إعداد WireGuard أولاً"
                                 } else {
-                                    vpnPermissionLauncher.launch(intent)
+                                    val permissionIntent = VpnService.prepare(this@MainActivity)
+                                    if (permissionIntent == null) {
+                                        startVpnService(VpnTunnelService.ACTION_CONNECT)
+                                        statusText = "جارٍ إنشاء نفق WireGuard..."
+                                    } else {
+                                        vpnPermissionLauncher.launch(permissionIntent)
+                                    }
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -103,10 +153,31 @@ class MainActivity : ComponentActivity() {
                             Text("تشغيل VPN")
                         }
 
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        OutlinedButton(
+                            onClick = {
+                                startVpnService(VpnTunnelService.ACTION_DISCONNECT)
+                                statusText = "جارٍ فصل الاتصال..."
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text("فصل VPN")
+                        }
+
                         Spacer(modifier = Modifier.height(24.dp))
 
                         Text(
-                            text = "الإصدار 1.0",
+                            text = "ملف الإعداد يُحفظ داخل التطبيق ولا يُرسل إلى أي خادم.",
+                            color = Color.LightGray,
+                            fontSize = 12.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "الإصدار 1.1",
                             color = Color.Gray,
                             fontSize = 12.sp
                         )
@@ -114,5 +185,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun startVpnService(action: String) {
+        val intent = Intent(this, VpnTunnelService::class.java).setAction(action)
+        ContextCompat.startForegroundService(this, intent)
+    }
+
+    override fun onDestroy() {
+        unregisterReceiver(statusReceiver)
+        super.onDestroy()
     }
 }
